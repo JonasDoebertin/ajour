@@ -17,6 +17,10 @@ enum SignOutError: Error, Equatable {
     }
 }
 
+enum AliasCreationError: Error, Equatable {
+    case stillEnabledWithoutTimer(email: String)
+}
+
 @MainActor @Observable final class AppModel {
     enum Phase: Equatable {
         case loading, signedOut, signedIn(UserInfo?)
@@ -33,6 +37,7 @@ enum SignOutError: Error, Equatable {
     @ObservationIgnored var onTimerEvents: ([TimerEvent]) -> Void = { _ in }
     @ObservationIgnored var onMailArrivals: ([MailArrival]) -> Void = { _ in }
     @ObservationIgnored var onAliasDisabled: (Int) -> Void = { _ in }
+    @ObservationIgnored var onNewAliasCopied: (String) -> Void = { _ in }
     /// Set when timed disables stop because the server rejected the key, until a new key is saved.
     private(set) var apiKeyInvalid = false
 
@@ -177,6 +182,22 @@ enum SignOutError: Error, Equatable {
         perform { _ = try engine.startTimer(for: alias, duration: duration) }
     }
 
+    /// A random alias uses the account's default domain and mailbox.
+    func createRandomAlias(expiringAfter duration: AliasDuration?) async {
+        do {
+            _ = try await createAlias(expiringAfter: duration) { try await $0.createRandomAlias() }
+            lastError = nil
+        } catch {
+            lastError = Self.userMessage(for: error)
+        }
+    }
+
+    func createCustomAlias(prefix: String, suffix: AliasSuffix, mailboxID: Int, expiringAfter duration: AliasDuration?) async throws -> Alias {
+        try await createAlias(expiringAfter: duration) {
+            try await $0.createCustomAlias(prefix: prefix, signedSuffix: suffix.signedSuffix, mailboxIDs: [mailboxID])
+        }
+    }
+
     func isBusy(aliasID: Int) -> Bool {
         busyAliasIDs.contains(aliasID)
     }
@@ -280,7 +301,7 @@ enum SignOutError: Error, Equatable {
             try action()
             lastError = nil
         } catch {
-            lastError = Self.message(for: error)
+            lastError = Self.userMessage(for: error)
         }
     }
 
@@ -293,7 +314,36 @@ enum SignOutError: Error, Equatable {
             try await action()
             lastError = nil
         } catch {
-            lastError = Self.message(for: error)
+            lastError = Self.userMessage(for: error)
+        }
+    }
+
+    /// A new alias is created enabled. It is only copied once its timer, if any, runs.
+    private func createAlias(
+        expiringAfter duration: AliasDuration?,
+        _ create: (SimpleLoginAPI) async throws -> Alias
+    ) async throws -> Alias {
+        guard let api else { throw TimerEngineError.notSignedIn }
+        let alias = try await create(api)
+        if let duration {
+            try await startTimer(forNewAlias: alias, duration: duration)
+        }
+        copyToClipboard(alias.email)
+        onNewAliasCopied(alias.email)
+        return alias
+    }
+
+    /// A new alias whose timer can't start is disabled again right away, so it never stays enabled untracked.
+    private func startTimer(forNewAlias alias: Alias, duration: AliasDuration) async throws {
+        do {
+            _ = try engine.startTimer(for: alias, duration: duration)
+        } catch {
+            do {
+                try await engine.disableNow(aliasID: alias.id)
+            } catch {
+                throw AliasCreationError.stillEnabledWithoutTimer(email: alias.email)
+            }
+            throw error
         }
     }
 
@@ -303,10 +353,12 @@ enum SignOutError: Error, Equatable {
         pinned[index] = pinned[index].settingEnabled(enabled)
     }
 
-    private static func message(for error: any Error) -> String {
+    static func userMessage(for error: any Error) -> String {
         switch error {
         case let error as APIError:
             error.userMessage
+        case AliasCreationError.stillEnabledWithoutTimer(let email):
+            "\(email) was created, but its timer could not start and it is still enabled."
         case TimerEngineError.notSignedIn:
             "Not signed in. Set up your API key first."
         case TimerEngineError.storeUnavailable:

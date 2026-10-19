@@ -5,6 +5,7 @@ import SimpleLoginKit
     let model: AppModel
     let onboarding: OnboardingModel
     let settings: SettingsModel
+    let newAlias: NewAliasModel
     let notifications: NotificationController
 
     override init() {
@@ -15,6 +16,7 @@ import SimpleLoginKit
         model.onMailArrivals = { $0.forEach(notifications.post) }
         model.onTimerEvents = { $0.forEach(notifications.post) }
         model.onAliasDisabled = { notifications.removeNotifications(aliasID: $0) }
+        model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications
         onboarding = OnboardingModel(
@@ -23,6 +25,7 @@ import SimpleLoginKit
             requestNotificationAuthorization: { await notifications.requestAuthorization() }
         )
         settings = SettingsModel(appModel: model, launchAtLogin: .system)
+        newAlias = NewAliasModel(appModel: model)
         super.init()
     }
 

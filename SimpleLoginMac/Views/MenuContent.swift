@@ -31,6 +31,8 @@ struct MenuContent: View {
         }
         if case .signedIn = model.phase {
             aliasSections
+            aliasCreation
+            Divider()
             Button("Settings…") {
                 openSettings()
                 NSApp.activate()
@@ -53,6 +55,20 @@ struct MenuContent: View {
             ForEach(sections.pinned) { AliasMenu(item: $0, model: model) }
             Divider()
         }
+    }
+
+    @ViewBuilder private var aliasCreation: some View {
+        Button("New Random Alias") {
+            Task { await model.createRandomAlias(expiringAfter: nil) }
+        }
+        Menu("New Random Alias That Expires") {
+            ForEach(AliasDuration.allCases, id: \.self) { duration in
+                Button("After \(duration.title)") {
+                    Task { await model.createRandomAlias(expiringAfter: duration) }
+                }
+            }
+        }
+        Button("New Alias…") { openWindow.frontmost(id: NewAliasView.windowID) }
     }
 }
 
