@@ -17,6 +17,8 @@ import SimpleLoginKit
     private(set) var isCreating = false
     private(set) var isComplete = false
     private var mailbox: Mailbox?
+    /// Changes on reset, so a create that finishes after the window closed doesn't affect the next one.
+    @ObservationIgnored private var generation = 0
 
     @ObservationIgnored private let appModel: AppModel
 
@@ -51,18 +53,22 @@ import SimpleLoginKit
 
     func create() async {
         guard canSubmit, let suffix, let mailbox else { return }
+        let generation = self.generation
         isCreating = true
         errorMessage = nil
         defer { isCreating = false }
         do {
             _ = try await appModel.createCustomAlias(prefix: trimmedPrefix, suffix: suffix, mailboxID: mailbox.id, expiringAfter: expiry)
+            guard generation == self.generation else { return }
             isComplete = true
         } catch {
+            guard generation == self.generation else { return }
             errorMessage = AppModel.userMessage(for: error)
         }
     }
 
     func reset() {
+        generation += 1
         prefix = ""
         suffix = nil
         expiry = nil

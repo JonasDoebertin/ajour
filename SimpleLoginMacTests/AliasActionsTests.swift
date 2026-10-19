@@ -198,6 +198,21 @@ struct AliasActionsTests {
         #expect(disabledAliasIDs.isEmpty)
     }
 
+    @Test func aRefreshStartedBeforeAnActionKeepsTheActionsResult() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.holdNext("/api/v2/aliases", json: #"{"aliases":[\#(Fixtures.aliasJSON(id: 7, enabled: true))]}"#)
+        let refresh = Task { await model.refreshPinned() }
+        await transport.waitUntilARequestIsHeld()
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await model.disableNow(aliasID: 7)
+        transport.release()
+        await refresh.value
+
+        #expect(model.menuSections.pinned.first?.state == .disabled)
+    }
+
     @Test func disableAfterStartsATimerWithoutCallingTheAPI() async throws {
         let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
         let requestsBefore = transport.requests.count

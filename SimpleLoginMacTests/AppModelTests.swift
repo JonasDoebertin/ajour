@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import SimpleLoginKit
 @testable import SimpleLoginMac
@@ -479,6 +480,33 @@ struct AppModelTests {
         await refresh.value
 
         #expect(model.pinned.isEmpty)
+    }
+
+    @Test func aRefreshFinishingAfterANewerOneIsDiscarded() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        let olderRefresh = Task { await model.refreshPinned() }
+        await transport.waitUntilARequestIsHeld()
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 4...5))
+
+        await model.refreshPinned()
+        transport.release()
+        await olderRefresh.value
+
+        #expect(model.pinned.map(\.id) == [4, 5])
+    }
+
+    @Test func refreshingAnUnchangedListLeavesThePinnedListUntouched() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        await model.refreshPinned()
+        let pinnedChanged = ChangeFlag()
+        withObservationTracking { _ = model.pinned } onChange: { pinnedChanged.set() }
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+
+        await model.refreshPinned()
+
+        #expect(pinnedChanged.isSet == false)
     }
 
     @Test func signOutForgetsPinnedAliases() async throws {

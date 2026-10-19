@@ -173,6 +173,22 @@ final class NewAliasModelTests {
         #expect(appModel.engine.record(for: 50)?.expiresAt == clock.now.addingTimeInterval(300))
     }
 
+    @Test func aCreateFinishingAfterResetIsIgnored() async throws {
+        enqueueChoices()
+        let (model, _) = try await loadedModel()
+        model.prefix = "shop"
+        transport.holdNext("/api/v3/alias/custom/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
+        let create = Task { await model.create() }
+        await transport.waitUntilARequestIsHeld()
+
+        model.reset()
+        transport.release()
+        await create.value
+
+        #expect(model.isComplete == false)
+        #expect(model.errorMessage == nil)
+    }
+
     @Test func resetStartsOverWithNeverAsTheExpiry() async throws {
         enqueueChoices()
         let (model, _) = try await loadedModel()

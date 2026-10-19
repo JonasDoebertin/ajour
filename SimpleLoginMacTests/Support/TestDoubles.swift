@@ -207,3 +207,17 @@ struct LaunchAtLoginRefused: LocalizedError {
         removedIdentifiers += identifiers
     }
 }
+
+/// Remembers that something happened, for callbacks that may run on any thread.
+final class ChangeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var wasSet = false
+
+    var isSet: Bool {
+        lock.withLock { wasSet }
+    }
+
+    func set() {
+        lock.withLock { wasSet = true }
+    }
+}

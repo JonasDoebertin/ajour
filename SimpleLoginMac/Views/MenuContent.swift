@@ -9,7 +9,7 @@ struct MenuContent: View {
 
     var body: some View {
         if let lastError = model.lastError {
-            Button(lastError) {}
+            Button(Self.errorTitle(for: lastError)) {}
                 .disabled(true)
             Divider()
         }
@@ -42,6 +42,14 @@ struct MenuContent: View {
         }
         Button("Quit") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    nonisolated private static let errorTitleLength = 80
+
+    /// A long server message would stretch the whole menu.
+    nonisolated static func errorTitle(for message: String) -> String {
+        guard message.count > errorTitleLength else { return message }
+        return message.prefix(errorTitleLength - 1) + "…"
     }
 
     /// Timed aliases that aren't pinned come first; pinned aliases with a timer stay in the pinned section.

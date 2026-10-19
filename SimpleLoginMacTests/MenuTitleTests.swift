@@ -20,4 +20,16 @@ struct MenuTitleTests {
 
         #expect(item.menuTitle == "● shop@example.com · 3:12 left")
     }
+
+    @Test func aShortErrorIsShownInFull() {
+        let message = String(repeating: "a", count: 80)
+
+        #expect(MenuContent.errorTitle(for: message) == message)
+    }
+
+    @Test func aLongErrorIsShortenedToEightyCharacters() {
+        let message = String(repeating: "a", count: 81)
+
+        #expect(MenuContent.errorTitle(for: message) == String(repeating: "a", count: 79) + "…")
+    }
 }

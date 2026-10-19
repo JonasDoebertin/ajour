@@ -19,6 +19,7 @@ enum SignOutError: Error, Equatable {
 
 enum AliasCreationError: Error, Equatable {
     case stillEnabledWithoutTimer(email: String)
+    case accountChanged(email: String)
 }
 
 @MainActor @Observable final class AppModel {
@@ -48,6 +49,9 @@ enum AliasCreationError: Error, Equatable {
     @ObservationIgnored private var lastActivityPollAt: Date?
     /// Changes whenever the API key changes or is removed, so work bound to one key can restart.
     private(set) var session = 0
+    /// Changes when a pinned refresh starts or the pinned list is patched locally, so an older refresh
+    /// never overwrites newer data.
+    @ObservationIgnored private var pinnedRevision = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
     @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
@@ -134,10 +138,13 @@ enum AliasCreationError: Error, Equatable {
     }
 
     /// Replaces the list only once every page has loaded, so a failure keeps the last complete list.
-    /// A result that arrives after sign-out or a key change belongs to the old session and is dropped.
+    /// A result that arrives after sign-out or a key change belongs to the old session and is dropped,
+    /// as is one overtaken by a newer refresh or a local change.
     func refreshPinned() async {
         guard let api else { return }
         let session = self.session
+        pinnedRevision += 1
+        let revision = pinnedRevision
         var loaded: [Alias] = []
         var page = 0
         do {
@@ -150,7 +157,7 @@ enum AliasCreationError: Error, Equatable {
         } catch {
             return
         }
-        guard session == self.session else { return }
+        guard session == self.session, revision == pinnedRevision else { return }
         pinned = loaded
     }
 
@@ -184,10 +191,12 @@ enum AliasCreationError: Error, Equatable {
 
     /// A random alias uses the account's default domain and mailbox.
     func createRandomAlias(expiringAfter duration: AliasDuration?) async {
+        let session = self.session
         do {
             _ = try await createAlias(expiringAfter: duration) { try await $0.createRandomAlias() }
             lastError = nil
         } catch {
+            guard session == self.session else { return }
             lastError = Self.userMessage(for: error)
         }
     }
@@ -319,12 +328,15 @@ enum AliasCreationError: Error, Equatable {
     }
 
     /// A new alias is created enabled. It is only copied once its timer, if any, runs.
+    /// An alias created for an account that was signed out or replaced meanwhile is left as it is.
     private func createAlias(
         expiringAfter duration: AliasDuration?,
         _ create: (SimpleLoginAPI) async throws -> Alias
     ) async throws -> Alias {
         guard let api else { throw TimerEngineError.notSignedIn }
+        let session = self.session
         let alias = try await create(api)
+        guard session == self.session else { throw AliasCreationError.accountChanged(email: alias.email) }
         if let duration {
             try await startTimer(forNewAlias: alias, duration: duration)
         }
@@ -349,6 +361,7 @@ enum AliasCreationError: Error, Equatable {
 
     /// Shows the new state right away instead of waiting for the next refresh.
     private func markPinned(aliasID: Int, enabled: Bool) {
+        pinnedRevision += 1
         guard let index = pinned.firstIndex(where: { $0.id == aliasID }) else { return }
         pinned[index] = pinned[index].settingEnabled(enabled)
     }
@@ -359,6 +372,8 @@ enum AliasCreationError: Error, Equatable {
             error.userMessage
         case AliasCreationError.stillEnabledWithoutTimer(let email):
             "\(email) was created, but its timer could not start and it is still enabled."
+        case AliasCreationError.accountChanged(let email):
+            "\(email) was created, but the API key changed before it could be set up."
         case TimerEngineError.notSignedIn:
             "Not signed in. Set up your API key first."
         case TimerEngineError.storeUnavailable:

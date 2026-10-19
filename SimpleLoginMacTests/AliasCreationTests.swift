@@ -134,6 +134,39 @@ final class AliasCreationTests {
         #expect(model.lastError == "random@example.com was created, but its timer could not start and it is still enabled.")
     }
 
+    @Test func aRandomAliasCreatedWhileSigningOutIsNotTimedCopiedOrAnnounced() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/alias/random/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
+        let create = Task { await model.createRandomAlias(expiringAfter: .fiveMinutes) }
+        await transport.waitUntilARequestIsHeld()
+
+        try await model.signOut()
+        transport.release()
+        await create.value
+
+        #expect(model.engine.records.isEmpty)
+        #expect(copied.isEmpty)
+        #expect(announced.isEmpty)
+        #expect(model.lastError == nil)
+    }
+
+    @Test func aCustomAliasCreatedWhileTheKeyChangesIsNotTimedCopiedOrAnnounced() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/v3/alias/custom/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
+        let create = Task { try await model.createCustomAlias(prefix: "shop", suffix: Self.customSuffix, mailboxID: 3, expiringAfter: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        _ = try await model.signIn(apiKey: "other-account-key")
+        transport.release()
+
+        await #expect(throws: AliasCreationError.accountChanged(email: "shop@my.dev")) { try await create.value }
+
+        #expect(model.engine.records.isEmpty)
+        #expect(copied.isEmpty)
+        #expect(announced.isEmpty)
+    }
+
     @Test func aCustomAliasIsCreatedWithTheChosenSuffixAndMailbox() async throws {
         let model = try await signedInModel()
         transport.enqueue("/api/v3/alias/custom/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
