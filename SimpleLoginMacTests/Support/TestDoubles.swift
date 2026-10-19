@@ -39,9 +39,11 @@ final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
 final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     private let lock = NSLock()
     private var storedRecords: [TimerRecord]
+    private let failsToSave: Bool
 
-    init(records: [TimerRecord] = []) {
+    init(records: [TimerRecord] = [], failsToSave: Bool = false) {
         storedRecords = records
+        self.failsToSave = failsToSave
     }
 
     var records: [TimerRecord] {
@@ -53,6 +55,7 @@ final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     }
 
     func save(_ records: [TimerRecord]) throws {
+        if failsToSave { throw CocoaError(.fileWriteNoPermission) }
         lock.withLock { storedRecords = records }
     }
 }

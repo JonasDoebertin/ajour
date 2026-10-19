@@ -28,12 +28,18 @@ struct SimpleLoginMacApp: App {
 }
 
 /// Opens onboarding whenever there is no API key: at launch and after signing out.
+/// Keeps the pinned list fresh for each key, and refreshes it whenever the menu opens. The menu's own
+/// `onAppear` fires only once, not on every open, so opening is detected through menu tracking.
 private struct MenuBarLabel: View {
     let model: AppModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Image(systemName: model.engine.hasActiveTimers ? "envelope.badge.fill" : "envelope")
+            .task(id: model.session) { await model.keepPinnedFresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+                Task { await model.refreshPinned() }
+            }
             .onChange(of: model.phase, initial: true) { _, phase in
                 if phase == .signedOut { openWindow.frontmost(id: OnboardingView.windowID) }
             }

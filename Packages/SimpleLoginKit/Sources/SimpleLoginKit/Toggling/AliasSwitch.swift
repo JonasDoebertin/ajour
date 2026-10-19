@@ -31,7 +31,7 @@ public struct AliasSwitch: Sendable {
 }
 
 extension Alias {
-    fileprivate func settingEnabled(_ enabled: Bool) -> Alias {
+    public func settingEnabled(_ enabled: Bool) -> Alias {
         Alias(
             id: id,
             email: email,

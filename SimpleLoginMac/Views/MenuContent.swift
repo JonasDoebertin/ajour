@@ -1,3 +1,4 @@
+import SimpleLoginKit
 import SwiftUI
 
 struct MenuContent: View {
@@ -6,6 +7,11 @@ struct MenuContent: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
+        if let lastError = model.lastError {
+            Button(lastError) {}
+                .disabled(true)
+            Divider()
+        }
         if model.engine.loadError != nil {
             Button("Timer data unreadable") {}
                 .disabled(true)
@@ -16,6 +22,7 @@ struct MenuContent: View {
             Divider()
         }
         if case .signedIn = model.phase {
+            aliasSections
             Button("Settings…") {
                 openSettings()
                 NSApp.activate()
@@ -25,5 +32,70 @@ struct MenuContent: View {
         }
         Button("Quit") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    /// Timed aliases that aren't pinned come first; pinned aliases with a timer stay in the pinned section.
+    @ViewBuilder private var aliasSections: some View {
+        let sections = model.menuSections
+        if !sections.timedUnpinned.isEmpty {
+            ForEach(sections.timedUnpinned) { AliasMenu(item: $0, model: model) }
+            Divider()
+        }
+        if !sections.pinned.isEmpty {
+            ForEach(sections.pinned) { AliasMenu(item: $0, model: model) }
+            Divider()
+        }
+    }
+}
+
+private struct AliasMenu: View {
+    let item: MenuAliasItem
+    let model: AppModel
+
+    var body: some View {
+        Menu(item.menuTitle) {
+            Button("Copy Address") { model.copy(email: item.email) }
+            Divider()
+            Group {
+                switch item.state {
+                case .disabled:
+                    ForEach(AliasDuration.allCases, id: \.self) { duration in
+                        Button("Enable for \(duration.title)") {
+                            Task { await model.enable(aliasID: item.id, for: duration) }
+                        }
+                    }
+                case .timed:
+                    disableNowButton
+                    Menu("Extend") {
+                        ForEach(AliasDuration.allCases, id: \.self) { duration in
+                            Button(duration.title) { model.extend(aliasID: item.id, by: duration) }
+                        }
+                    }
+                case .enabled:
+                    disableNowButton
+                    ForEach(AliasDuration.allCases, id: \.self) { duration in
+                        Button("Disable After \(duration.title)") {
+                            guard let alias = model.pinned.first(where: { $0.id == item.id }) else { return }
+                            model.disableAfter(alias: alias, duration: duration)
+                        }
+                    }
+                }
+            }
+            .disabled(model.isBusy(aliasID: item.id))
+        }
+    }
+
+    private var disableNowButton: some View {
+        Button("Disable Now") {
+            Task { await model.disableNow(aliasID: item.id) }
+        }
+    }
+}
+
+extension MenuAliasItem {
+    var menuTitle: String {
+        let marker = state == .disabled ? "○" : "●"
+        guard case .timed(let remaining) = state else { return "\(marker) \(email)" }
+        return "\(marker) \(email) · \(RemainingTime.format(remaining)) left"
     }
 }

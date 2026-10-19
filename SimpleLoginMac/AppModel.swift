@@ -25,6 +25,9 @@ enum SignOutError: Error, Equatable {
     private(set) var phase: Phase = .loading
     private(set) var pinned: [Alias] = []
     private(set) var now: Date
+    /// The reason the last alias action failed, until an action succeeds or the key changes.
+    private(set) var lastError: String?
+    private var busyAliasIDs: Set<Int> = []
     let engine: TimerEngine
     private(set) var api: SimpleLoginAPI?
     @ObservationIgnored var onTimerEvents: ([TimerEvent]) -> Void = { _ in }
@@ -33,9 +36,10 @@ enum SignOutError: Error, Equatable {
     @ObservationIgnored private let keyStore: any APIKeyStoring
     @ObservationIgnored private let transport: any HTTPTransport
     @ObservationIgnored private let currentDate: @Sendable () -> Date
+    @ObservationIgnored private let copyToClipboard: @MainActor (String) -> Void
     @ObservationIgnored private var lastActivityPollAt: Date?
-    /// Changes whenever the API key changes or is removed.
-    @ObservationIgnored private var session = 0
+    /// Changes whenever the API key changes or is removed, so work bound to one key can restart.
+    private(set) var session = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
     @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
@@ -44,16 +48,19 @@ enum SignOutError: Error, Equatable {
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
     private static let disableBudget: Duration = .seconds(5)
+    private static let pinnedRefreshInterval: Duration = .seconds(60)
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
         timerStore: any TimerStore,
         transport: any HTTPTransport = URLSessionTransport(session: URLSession(configuration: sessionConfiguration())),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy
     ) {
         self.keyStore = keyStore
         self.transport = transport
         currentDate = now
+        self.copyToClipboard = copyToClipboard
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now)
     }
@@ -139,6 +146,50 @@ enum SignOutError: Error, Equatable {
         pinned = loaded
     }
 
+    var menuSections: MenuSections {
+        MenuSections.make(pinned: pinned, records: engine.records, now: now)
+    }
+
+    func enable(aliasID: Int, for duration: AliasDuration) async {
+        await perform(on: aliasID) {
+            _ = try await engine.enable(aliasID: aliasID, for: duration)
+            markPinned(aliasID: aliasID, enabled: true)
+        }
+    }
+
+    func extend(aliasID: Int, by duration: AliasDuration) {
+        perform { try engine.extend(aliasID: aliasID, by: duration) }
+    }
+
+    func disableNow(aliasID: Int) async {
+        await perform(on: aliasID) {
+            try await engine.disableNow(aliasID: aliasID)
+            markPinned(aliasID: aliasID, enabled: false)
+        }
+    }
+
+    /// Times an already enabled alias, so it is disabled later without changing it now.
+    func disableAfter(alias: Alias, duration: AliasDuration) {
+        perform { _ = try engine.startTimer(for: alias, duration: duration) }
+    }
+
+    func isBusy(aliasID: Int) -> Bool {
+        busyAliasIDs.contains(aliasID)
+    }
+
+    func copy(email: String) {
+        copyToClipboard(email)
+        lastError = nil
+    }
+
+    /// Refreshes the pinned list right away and then every 60 seconds, until cancelled or signed out.
+    func keepPinnedFresh() async {
+        while api != nil, !Task.isCancelled {
+            await refreshPinned()
+            try? await Task.sleep(for: Self.pinnedRefreshInterval)
+        }
+    }
+
     /// Stops ticking so no poll or event fires during shutdown, then tries to disable timed aliases within
     /// the budget. Records of aliases that stay enabled remain on disk for the next launch.
     func prepareForTermination() async {
@@ -218,8 +269,52 @@ enum SignOutError: Error, Equatable {
         return now.timeIntervalSince(lastActivityPollAt) >= Self.activityPollInterval
     }
 
+    private func perform(_ action: () throws -> Void) {
+        do {
+            try action()
+            lastError = nil
+        } catch {
+            lastError = Self.message(for: error)
+        }
+    }
+
+    /// Ignores a second action on the alias while one runs: two enables could both read "disabled"
+    /// and toggle twice, leaving the alias disabled.
+    private func perform(on aliasID: Int, _ action: () async throws -> Void) async {
+        guard busyAliasIDs.insert(aliasID).inserted else { return }
+        defer { busyAliasIDs.remove(aliasID) }
+        do {
+            try await action()
+            lastError = nil
+        } catch {
+            lastError = Self.message(for: error)
+        }
+    }
+
+    /// Shows the new state right away instead of waiting for the next refresh.
+    private func markPinned(aliasID: Int, enabled: Bool) {
+        guard let index = pinned.firstIndex(where: { $0.id == aliasID }) else { return }
+        pinned[index] = pinned[index].settingEnabled(enabled)
+    }
+
+    private static func message(for error: any Error) -> String {
+        switch error {
+        case let error as APIError:
+            error.userMessage
+        case TimerEngineError.notSignedIn:
+            "Not signed in. Set up your API key first."
+        case TimerEngineError.storeUnavailable:
+            "Timer data is unreadable, so timers can't be started or changed."
+        case is AliasSwitchError:
+            "The alias did not change. Try again."
+        default:
+            error.localizedDescription
+        }
+    }
+
     private func connect(_ api: SimpleLoginAPI?) {
         session += 1
+        lastError = nil
         self.api = api
         engine.api = api
     }
