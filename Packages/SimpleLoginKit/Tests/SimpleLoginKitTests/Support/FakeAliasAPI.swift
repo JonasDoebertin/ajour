@@ -6,6 +6,7 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     private var storedAliases: [Int: Alias]
     private var storedErrors: [Error] = []
     private var storedToggleCalls: [Int] = []
+    private var storedAliasCalls: [Int] = []
 
     init(aliases: [Alias] = []) {
         storedAliases = Dictionary(uniqueKeysWithValues: aliases.map { ($0.id, $0) })
@@ -25,8 +26,13 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
         lock.withLock { storedToggleCalls }
     }
 
+    var aliasCalls: [Int] {
+        lock.withLock { storedAliasCalls }
+    }
+
     func alias(id: Int) async throws -> Alias {
         try lock.withLock {
+            storedAliasCalls.append(id)
             try popError()
             guard let alias = storedAliases[id] else {
                 throw APIError.server(status: 404, message: "Alias not found")

@@ -150,10 +150,11 @@ public enum TimerEngineError: Error, Equatable {
     }
 
     /// Checks every running timer's alias for a mail forwarded since it was enabled and reports each mail once.
-    /// A failed fetch is skipped; the next poll tries again.
+    /// A failed fetch is skipped; the next poll tries again. Expired timers and aliases the key can't reach
+    /// aren't fetched at all.
     public func pollActivity() async -> [MailArrival] {
         var arrivals: [MailArrival] = []
-        for aliasID in records.map(\.aliasID) {
+        for aliasID in records.filter(isPollable).map(\.aliasID) {
             guard let api, !Task.isCancelled else { break }
             guard let alias = try? await api.alias(id: aliasID) else { continue }
             guard let index = recordIndex(for: aliasID), records[index].expiresAt > now(),
@@ -279,6 +280,14 @@ public enum TimerEngineError: Error, Equatable {
             true
         default:
             false
+        }
+    }
+
+    private func isPollable(_ record: TimerRecord) -> Bool {
+        guard record.expiresAt > now() else { return false }
+        switch failures[record.aliasID] {
+        case .unauthorized, .forbidden: return false
+        case .transient, nil: return true
         }
     }
 

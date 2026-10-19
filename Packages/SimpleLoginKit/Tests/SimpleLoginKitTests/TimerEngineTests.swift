@@ -1020,6 +1020,46 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.record(for: 1)?.lastNotifiedActivityTimestamp == nil)
     }
 
+    @Test func pollFetchesOnlyAliasesWhoseTimersRun() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        clock.advance(by: 300)
+        let fetchesBefore = api.aliasCalls
+
+        _ = await engine.pollActivity()
+
+        #expect(api.aliasCalls == fetchesBefore + [2])
+    }
+
+    @Test func pollFetchesNoAliasWhileTheKeyIsInvalid() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        api.errors = [APIError.unauthorized]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        let fetchesBefore = api.aliasCalls
+
+        _ = await engine.pollActivity()
+
+        #expect(api.aliasCalls == fetchesBefore)
+    }
+
+    @Test func pollFetchesNoAliasTheKeyMayNotDisable() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.server(status: 403, message: nil)]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        try engine.extend(aliasID: 1, by: .oneHour)
+        let fetchesBefore = api.aliasCalls
+
+        _ = await engine.pollActivity()
+
+        #expect(api.aliasCalls == fetchesBefore)
+    }
+
     @Test func pollRetriesAfterFetchError() async throws {
         let engine = makeEngine()
         _ = try await engine.enable(aliasID: 1, for: .oneHour)
