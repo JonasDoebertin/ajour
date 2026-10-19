@@ -15,21 +15,25 @@ struct AliasActionsTests {
         self.timerStore = timerStore ?? InMemoryTimerStore(records: records)
     }
 
-    func makeModel(copyToClipboard: @escaping @MainActor (String) -> Void = { _ in }) -> AppModel {
+    func makeModel(
+        copyToClipboard: @escaping @MainActor (String) -> Void = { _ in },
+        disableBudget: Duration = .seconds(5)
+    ) -> AppModel {
         let clock = clock
         return AppModel(
             keyStore: keyStore,
             timerStore: timerStore,
             transport: transport,
             now: { clock.now },
-            copyToClipboard: copyToClipboard
+            copyToClipboard: copyToClipboard,
+            disableBudget: disableBudget
         )
     }
 
     /// Signs in and loads the given aliases as the pinned list.
-    func signedInModel(pinned aliases: [String] = []) async throws -> AppModel {
+    func signedInModel(pinned aliases: [String] = [], disableBudget: Duration = .seconds(5)) async throws -> AppModel {
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
-        let model = makeModel()
+        let model = makeModel(disableBudget: disableBudget)
         _ = try await model.signIn(apiKey: "valid-key")
         transport.enqueue("/api/v2/aliases", json: #"{"aliases":[\#(aliases.joined(separator: ","))]}"#)
         await model.refreshPinned()
@@ -419,6 +423,74 @@ struct AliasActionsTests {
 
         #expect(succeeded == false)
         #expect(model.lastError == "The alias is being disabled right now. Try again in a moment.")
+    }
+
+    // MARK: Quitting or signing out while an alias is being enabled
+
+    /// Holds the enable's first read, and answers the enable and a later disable of the alias.
+    func holdEnablingAlias7ThenAllowDisablingIt() {
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+    }
+
+    @Test func quittingIsDeferredWhileAnEnableRuns() async throws {
+        let model = try await signedInModel()
+        holdEnablingAlias7ThenAllowDisablingIt()
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.needsToDisableBeforeQuitting)
+
+        transport.release()
+        _ = await enable.value
+    }
+
+    @Test func quittingWhileAnEnableRunsDisablesTheAliasOnceItIsEnabled() async throws {
+        let model = try await signedInModel()
+        holdEnablingAlias7ThenAllowDisablingIt()
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        let quit = Task { await model.prepareForTermination() }
+        for _ in 0..<20 { await Task.yield() }
+        transport.release()
+        _ = await enable.value
+        await quit.value
+
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 2)
+        #expect(model.engine.records.isEmpty)
+    }
+
+    @Test func signingOutWhileAnEnableRunsDisablesTheAliasOnceItIsEnabled() async throws {
+        let model = try await signedInModel()
+        holdEnablingAlias7ThenAllowDisablingIt()
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        let signOut = Task { try await model.signOut() }
+        for _ in 0..<20 { await Task.yield() }
+        transport.release()
+        _ = await enable.value
+        try await signOut.value
+
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 2)
+        #expect(model.engine.records.isEmpty)
+        #expect(keyStore.key == nil)
+    }
+
+    @Test func quittingStopsWaitingForAnEnableWhenTheBudgetRunsOut() async throws {
+        let model = try await signedInModel(disableBudget: .milliseconds(50))
+        holdEnablingAlias7ThenAllowDisablingIt()
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        await model.prepareForTermination()
+
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+        transport.release()
+        _ = await enable.value
     }
 
     @Test func copyPutsTheEmailOnTheClipboard() {

@@ -54,6 +54,8 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored private let transport: any HTTPTransport
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let copyToClipboard: @MainActor (String) -> Void
+    /// How long quit and sign-out try to disable aliases before giving up.
+    @ObservationIgnored private let disableBudget: Duration
     @ObservationIgnored private var lastActivityPollAt: Date?
     /// Changes whenever the API key changes or is removed, so work bound to one key can restart.
     private(set) var session = 0
@@ -70,10 +72,12 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
     /// Set once quitting starts, so no tick work starts and nothing more is forwarded.
     @ObservationIgnored private var isShuttingDown = false
+    /// Enables and creations that can leave an alias enabled before its timer is saved.
+    @ObservationIgnored private var enablesInFlight = 0
+    @ObservationIgnored private var enablesFinishedWaiters: [AsyncStream<Never>.Continuation] = []
 
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
-    private static let disableBudget: Duration = .seconds(5)
     private static let pinnedRefreshInterval: Duration = .seconds(60)
 
     init(
@@ -81,12 +85,14 @@ enum AliasActionError: Error, Equatable {
         timerStore: any TimerStore,
         transport: any HTTPTransport = URLSessionTransport(session: URLSession(configuration: sessionConfiguration())),
         now: @escaping @Sendable () -> Date = Date.init,
-        copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy
+        copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy,
+        disableBudget: Duration = .seconds(5)
     ) {
         self.keyStore = keyStore
         self.transport = transport
         currentDate = now
         self.copyToClipboard = copyToClipboard
+        self.disableBudget = disableBudget
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now)
         engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
@@ -116,6 +122,11 @@ enum AliasActionError: Error, Equatable {
         return accountLoad
     }
 
+    /// Whether quitting has to wait for aliases to be disabled first, including ones still being enabled.
+    var needsToDisableBeforeQuitting: Bool {
+        engine.hasActiveTimers || enablesInFlight > 0
+    }
+
     var userInfo: UserInfo? {
         guard case .signedIn(let userInfo) = phase else { return nil }
         return userInfo
@@ -143,7 +154,7 @@ enum AliasActionError: Error, Equatable {
     /// Timed aliases are disabled first: without the key, nothing could disable them later.
     func signOut() async throws {
         guard engine.loadError == nil else { throw SignOutError.timerDataUnreadable }
-        guard await engine.disableAll(within: Self.disableBudget) else {
+        guard await disableEverything() else {
             throw SignOutError.aliasesStillEnabled(count: engine.records.count)
         }
         try keyStore.delete()
@@ -182,9 +193,11 @@ enum AliasActionError: Error, Equatable {
 
     @discardableResult
     func enable(aliasID: Int, for duration: AliasDuration) async -> Bool {
-        await perform(on: aliasID) {
-            _ = try await engine.enable(aliasID: aliasID, for: duration)
-            recordEnabled(true, aliasID: aliasID)
+        await whileEnabling {
+            await perform(on: aliasID) {
+                _ = try await engine.enable(aliasID: aliasID, for: duration)
+                recordEnabled(true, aliasID: aliasID)
+            }
         }
     }
 
@@ -203,15 +216,17 @@ enum AliasActionError: Error, Equatable {
     /// one shown as enabled may have been disabled elsewhere meanwhile; such an alias is never turned on.
     @discardableResult
     func disableAfter(aliasID: Int, duration: AliasDuration) async -> Bool {
-        await perform(on: aliasID) {
-            guard let api else { throw TimerEngineError.notSignedIn }
-            let alias = try await api.alias(id: aliasID)
-            guard alias.enabled else {
-                recordEnabled(false, aliasID: aliasID)
-                throw AliasActionError.alreadyDisabled(email: alias.email)
+        await whileEnabling {
+            await perform(on: aliasID) {
+                guard let api else { throw TimerEngineError.notSignedIn }
+                let alias = try await api.alias(id: aliasID)
+                guard alias.enabled else {
+                    recordEnabled(false, aliasID: aliasID)
+                    throw AliasActionError.alreadyDisabled(email: alias.email)
+                }
+                _ = try engine.startTimer(for: alias, duration: duration)
+                recordEnabled(true, aliasID: aliasID)
             }
-            _ = try engine.startTimer(for: alias, duration: duration)
-            recordEnabled(true, aliasID: aliasID)
         }
     }
 
@@ -293,8 +308,9 @@ enum AliasActionError: Error, Equatable {
     }
 
     /// Stops ticking so no poll or event fires during shutdown, then tries to disable timed aliases within
-    /// the budget. Records of aliases that stay enabled remain on disk for the next launch.
-    /// A running expiry pass is left alone: `disableAll` joins its attempts, and cancelling it would start them over.
+    /// the budget, including aliases still being enabled. Records of aliases that stay enabled remain on disk
+    /// for the next launch. A running expiry pass is left alone: `disableAll` joins its attempts, and
+    /// cancelling it would start them over.
     func prepareForTermination() async {
         isShuttingDown = true
         tickLoop?.cancel()
@@ -303,7 +319,41 @@ enum AliasActionError: Error, Equatable {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
         }
-        _ = await engine.disableAll(within: Self.disableBudget)
+        _ = await disableEverything()
+    }
+
+    /// Lets enables in flight save their timers first, so the aliases they enable are disabled too.
+    /// Waiting and disabling share one budget.
+    private func disableEverything() async -> Bool {
+        let deadline = ContinuousClock.now + disableBudget
+        await waitForEnablesInFlight(until: deadline)
+        return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now))
+    }
+
+    /// Runs an action that can enable an alias before its timer is saved, so quit and sign-out wait for it.
+    private func whileEnabling<Result>(_ action: () async throws -> Result) async rethrows -> Result {
+        enablesInFlight += 1
+        defer { finishEnable() }
+        return try await action()
+    }
+
+    private func finishEnable() {
+        enablesInFlight -= 1
+        guard enablesInFlight == 0 else { return }
+        enablesFinishedWaiters.forEach { $0.finish() }
+        enablesFinishedWaiters = []
+    }
+
+    private func waitForEnablesInFlight(until deadline: ContinuousClock.Instant) async {
+        guard enablesInFlight > 0 else { return }
+        let (enablesFinished, waiter) = AsyncStream<Never>.makeStream()
+        enablesFinishedWaiters.append(waiter)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { for await _ in enablesFinished {} }
+            group.addTask { try? await Task.sleep(until: deadline) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     /// Disables aliases whose timers are due and, every 15 seconds while timers run, checks them for new mail.
@@ -407,16 +457,18 @@ enum AliasActionError: Error, Equatable {
     ) async throws -> Alias {
         guard let api else { throw TimerEngineError.notSignedIn }
         let session = self.session
-        let alias = try await create(api)
-        guard session == self.session else {
-            throw await abandonAfterAccountChange(alias, using: api, wasToExpire: duration != nil)
+        return try await whileEnabling {
+            let alias = try await create(api)
+            guard session == self.session else {
+                throw await abandonAfterAccountChange(alias, using: api, wasToExpire: duration != nil)
+            }
+            if let duration {
+                try await startTimer(forNewAlias: alias, duration: duration)
+            }
+            copyToClipboard(alias.email)
+            onNewAliasCopied(alias.email)
+            return alias
         }
-        if let duration {
-            try await startTimer(forNewAlias: alias, duration: duration)
-        }
-        copyToClipboard(alias.email)
-        onNewAliasCopied(alias.email)
-        return alias
     }
 
     /// An alias meant to expire must not stay enabled untracked, so it is disabled with the key it was created with.

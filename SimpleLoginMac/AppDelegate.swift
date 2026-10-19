@@ -47,7 +47,7 @@ import SimpleLoginKit
 
     /// Records of aliases that could not be disabled in time stay on disk for the next launch.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model.engine.hasActiveTimers else { return .terminateNow }
+        guard model.needsToDisableBeforeQuitting else { return .terminateNow }
         Task {
             await model.prepareForTermination()
             sender.reply(toApplicationShouldTerminate: true)
