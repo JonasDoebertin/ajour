@@ -15,6 +15,12 @@ import SimpleLoginKit
         launchAtLoginControl = launchAtLogin
     }
 
+    /// Retries the account load when it failed earlier, for example while offline at launch.
+    func refreshAccount() async {
+        guard appModel.phase == .signedIn(nil) else { return }
+        await appModel.loadUserInfo()
+    }
+
     func refreshLaunchAtLogin() {
         launchAtLogin = launchAtLoginControl.isEnabled()
     }

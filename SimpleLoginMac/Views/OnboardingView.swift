@@ -32,8 +32,8 @@ struct OnboardingView: View {
         .onChange(of: model.step, initial: true) {
             offerClipboardKey()
         }
-        .onChange(of: model.isComplete) { _, isComplete in
-            if isComplete { dismissWindow(id: Self.windowID) }
+        .onChange(of: model.closesWindow) { _, closesWindow in
+            if closesWindow { dismissWindow(id: Self.windowID) }
         }
         .onDisappear {
             model.reset()
@@ -104,16 +104,23 @@ struct OnboardingView: View {
             Text("SimpleLogin for macOS lives in the menu bar.")
             Toggle("Launch at login", isOn: $launchAtLogin)
                 .toggleStyle(.checkbox)
+                .disabled(model.isFinishing || model.isComplete)
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .foregroundStyle(.red)
             }
             HStack {
                 Spacer()
-                Button("Done") {
-                    Task { await model.finish(launchAtLogin: launchAtLogin) }
+                if model.isComplete {
+                    Button("Close") { dismissWindow(id: Self.windowID) }
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Done") {
+                        Task { await model.finish(launchAtLogin: launchAtLogin) }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.isFinishing)
                 }
-                .keyboardShortcut(.defaultAction)
             }
         }
     }

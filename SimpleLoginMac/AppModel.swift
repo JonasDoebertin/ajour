@@ -66,16 +66,20 @@ enum SignOutError: Error, Equatable {
         return configuration
     }
 
-    func start() {
+    /// Returns the account load started for a stored key, so callers can wait for it.
+    @discardableResult
+    func start() -> Task<Void, Never>? {
+        var accountLoad: Task<Void, Never>?
         if let key = try? keyStore.load() {
             connect(SimpleLoginAPI(apiKey: key, transport: transport))
             phase = .signedIn(nil)
-            Task { await loadUserInfo() }
+            accountLoad = Task { await loadUserInfo() }
         } else {
             phase = .signedOut
         }
         startTickLoop()
         observeWake()
+        return accountLoad
     }
 
     var userInfo: UserInfo? {

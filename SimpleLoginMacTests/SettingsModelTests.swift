@@ -27,6 +27,34 @@ struct SettingsModelTests {
         _ = try await appModel.signIn(apiKey: "valid-key")
     }
 
+    @Test func refreshingTheAccountRetriesALoadThatFailedAtLaunch() async {
+        let test = SettingsModelTests(keyStore: InMemoryAPIKeyStore(key: "stored-key"))
+        await test.appModel.start()?.value
+        #expect(test.appModel.phase == .signedIn(nil))
+        test.transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+
+        await test.settings.refreshAccount()
+
+        #expect(test.appModel.userInfo == Fixtures.userInfo)
+    }
+
+    @Test func refreshingTheAccountKeepsLoadedDetailsWithoutARequest() async throws {
+        try await signIn()
+
+        await settings.refreshAccount()
+
+        #expect(transport.requests.count == 1)
+        #expect(appModel.userInfo == Fixtures.userInfo)
+    }
+
+    @Test func refreshingTheAccountWhileSignedOutRequestsNothing() async {
+        appModel.start()
+
+        await settings.refreshAccount()
+
+        #expect(transport.requests.isEmpty)
+    }
+
     @Test func refreshReadsTheLaunchAtLoginState() {
         launchAtLogin.isEnabled = true
 

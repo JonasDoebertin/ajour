@@ -75,11 +75,27 @@ struct AppModelTests {
         test.transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         let model = test.makeModel()
 
-        model.start()
-        await test.waitUntil { model.userInfo != nil }
+        await model.start()?.value
 
         #expect(model.phase == .signedIn(Fixtures.userInfo))
         #expect(model.userInfo == Fixtures.userInfo)
+    }
+
+    @Test func startWithARejectedStoredKeyStaysSignedInWithoutAccount() async {
+        let test = AppModelTests(storedKey: "revoked-key")
+        test.transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
+        let model = test.makeModel()
+
+        await model.start()?.value
+
+        #expect(test.requestCount(path: "/api/user_info") == 1)
+        #expect(model.phase == .signedIn(nil))
+    }
+
+    @Test func startWithoutStoredKeyLoadsNoAccount() {
+        let model = makeModel()
+
+        #expect(model.start() == nil)
     }
 
     @Test func loadingTheAccountFailsWithoutLeavingTheSignedInPhase() async throws {

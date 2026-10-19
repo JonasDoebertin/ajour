@@ -13,15 +13,20 @@ struct OnboardingModelTests {
     let appModel: AppModel
     let onboarding: OnboardingModel
     let notificationRequests = Counter()
+    let notificationPermission = Gate()
 
-    init(keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore()) {
+    init(keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(), holdsNotificationPermission: Bool = false) {
         self.keyStore = keyStore
         appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(), transport: transport)
         let notificationRequests = notificationRequests
+        let notificationPermission = notificationPermission
         onboarding = OnboardingModel(
             appModel: appModel,
             launchAtLogin: launchAtLogin.control,
-            requestNotificationAuthorization: { notificationRequests.increment() }
+            requestNotificationAuthorization: {
+                notificationRequests.increment()
+                if holdsNotificationPermission { await notificationPermission.wait() }
+            }
         )
     }
 
@@ -193,17 +198,53 @@ struct OnboardingModelTests {
         #expect(onboarding.isComplete)
     }
 
-    @Test func finishStaysOnTheFinalStepWhenLaunchAtLoginFails() async {
+    @Test func finishCompletesEvenWhenLaunchAtLoginFails() async {
         let onboarding = await confirmedOnboarding()
         onboarding.confirmAccount()
         launchAtLogin.failure = LaunchAtLoginRefused()
 
         await onboarding.finish(launchAtLogin: true)
 
-        #expect(onboarding.step == .finish)
-        #expect(!onboarding.isComplete)
+        #expect(onboarding.isComplete)
+        #expect(notificationRequests.value == 1)
         #expect(onboarding.errorMessage == "Could not change launch at login. Operation not permitted")
-        #expect(notificationRequests.value == 0)
+    }
+
+    @Test func finishKeepsTheWindowOpenToShowALaunchAtLoginFailure() async {
+        let onboarding = await confirmedOnboarding()
+        onboarding.confirmAccount()
+        launchAtLogin.failure = LaunchAtLoginRefused()
+
+        await onboarding.finish(launchAtLogin: true)
+
+        #expect(!onboarding.closesWindow)
+    }
+
+    @Test func finishWithoutProblemsClosesTheWindow() async {
+        let onboarding = await confirmedOnboarding()
+        onboarding.confirmAccount()
+
+        await onboarding.finish(launchAtLogin: true)
+
+        #expect(onboarding.closesWindow)
+    }
+
+    @Test func finishRunsOnceWhenDoneIsPressedTwice() async {
+        let test = OnboardingModelTests(holdsNotificationPermission: true)
+        let onboarding = await test.confirmedOnboarding()
+        onboarding.confirmAccount()
+        let firstFinish = Task { await onboarding.finish(launchAtLogin: true) }
+        await test.notificationPermission.waitUntilSomeoneWaits()
+        #expect(onboarding.isFinishing)
+
+        let secondFinish = Task { await onboarding.finish(launchAtLogin: true) }
+        test.notificationPermission.open()
+        await firstFinish.value
+        await secondFinish.value
+
+        #expect(test.notificationRequests.value == 1)
+        #expect(!onboarding.isFinishing)
+        #expect(onboarding.isComplete)
     }
 
     @Test func resetStartsOver() async {
@@ -217,6 +258,29 @@ struct OnboardingModelTests {
         #expect(onboarding.apiKey.isEmpty)
         #expect(onboarding.errorMessage == nil)
         #expect(!onboarding.isComplete)
+    }
+}
+
+/// Holds callers of `wait()` until `open()`; once open, it lets everyone through.
+@MainActor final class Gate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func waitUntilSomeoneWaits() async {
+        while waiters.isEmpty {
+            await Task.yield()
+        }
+    }
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
     }
 }
 

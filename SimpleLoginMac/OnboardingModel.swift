@@ -12,6 +12,7 @@ import SimpleLoginKit
     private(set) var errorMessage: String?
     private(set) var isSubmitting = false
     private(set) var isComplete = false
+    private(set) var isFinishing = false
     /// Replacing a key skips the final step, so it can't override the launch-at-login choice made in Settings.
     @ObservationIgnored private var isReplacingKey = false
 
@@ -27,6 +28,11 @@ import SimpleLoginKit
         self.appModel = appModel
         self.launchAtLogin = launchAtLogin
         self.requestNotificationAuthorization = requestNotificationAuthorization
+    }
+
+    /// A launch-at-login failure keeps the window open, so the user reads why before closing it.
+    var closesWindow: Bool {
+        isComplete && errorMessage == nil
     }
 
     var canSubmit: Bool {
@@ -79,14 +85,18 @@ import SimpleLoginKit
         }
     }
 
+    /// Completes setup even when launch at login can't be changed, for example with ad-hoc signing:
+    /// the user can't fix that here, and Settings shows the actual state later.
     func finish(launchAtLogin enabled: Bool) async {
+        guard !isFinishing, !isComplete else { return }
+        isFinishing = true
+        defer { isFinishing = false }
         errorMessage = nil
         if enabled != launchAtLogin.isEnabled() {
             do {
                 try launchAtLogin.setEnabled(enabled)
             } catch {
                 errorMessage = LaunchAtLoginControl.errorMessage(for: error)
-                return
             }
         }
         await requestNotificationAuthorization()

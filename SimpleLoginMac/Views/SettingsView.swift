@@ -26,6 +26,7 @@ struct SettingsView: View {
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear { settings.refreshLaunchAtLogin() }
+        .task { await settings.refreshAccount() }
         .alert("Could Not Sign Out", isPresented: Binding(
             get: { settings.signOutError != nil },
             set: { if !$0 { settings.signOutError = nil } }
