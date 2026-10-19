@@ -186,6 +186,40 @@ struct AppModelTests {
         #expect(model.engine.records.isEmpty)
     }
 
+    @Test func anExpiredAliasShowsAsDisabledBeforeOtherDueAliasesFinish() async throws {
+        let start = TestClock().now
+        let test = AppModelTests(records: [.expired(aliasID: 6, at: start), .expired(aliasID: 7, at: start)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/v2/aliases", json: #"{"aliases":[\#(Fixtures.aliasJSON(id: 6)),\#(Fixtures.aliasJSON(id: 7))]}"#)
+        await model.refreshPinned()
+        test.transport.enqueue("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
+        test.transport.enqueue("/api/aliases/6/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        let work = model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 0)])
+
+        test.transport.release()
+        for task in work { await task.value }
+    }
+
+    @Test func aPartlyFailedSignOutShowsTheAliasesItDisabled() async throws {
+        let start = TestClock().now
+        let test = AppModelTests(records: [.running(aliasID: 6, at: start), .running(aliasID: 7, at: start)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/v2/aliases", json: #"{"aliases":[\#(Fixtures.aliasJSON(id: 6)),\#(Fixtures.aliasJSON(id: 7))]}"#)
+        await model.refreshPinned()
+        test.transport.enqueue("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
+        test.transport.enqueue("/api/aliases/6/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await #expect(throws: SignOutError.aliasesStillEnabled(count: 1)) {
+            try await model.signOut()
+        }
+
+        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 290)])
+    }
+
     @Test func tickWithoutDueAliasesForwardsNoEvents() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()

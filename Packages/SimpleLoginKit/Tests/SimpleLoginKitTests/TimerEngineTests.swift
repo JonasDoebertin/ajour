@@ -932,6 +932,82 @@ final class TestClock: @unchecked Sendable {
         #expect(await engine.disableAll(within: .seconds(5)) == false)
     }
 
+    // MARK: - Reporting each disabled alias
+
+    /// Collects the aliases the engine reports as disabled.
+    private func recordingDisabledAliases(of engine: TimerEngine) -> DisabledAliasLog {
+        let log = DisabledAliasLog()
+        engine.onAliasDisabled = { log.aliasIDs.append($0) }
+        return log
+    }
+
+    @Test func anExpiredAliasIsReportedAsDisabled() async throws {
+        let engine = makeEngine()
+        let log = recordingDisabledAliases(of: engine)
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        clock.advance(by: 300)
+
+        _ = await engine.processDue()
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func aManuallyDisabledAliasIsReportedAsDisabled() async throws {
+        let engine = makeEngine()
+        let log = recordingDisabledAliases(of: engine)
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+
+        try await engine.disableNow(aliasID: 1)
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func disableAllReportsOnlyTheAliasesItDisabled() async throws {
+        let engine = makeEngine()
+        let log = recordingDisabledAliases(of: engine)
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        api.errors = [APIError.transport("offline")]
+
+        _ = await engine.disableAll(within: .seconds(5))
+
+        #expect(log.aliasIDs.count == 1)
+        #expect(log.aliasIDs.first.map { engine.record(for: $0) == nil } == true)
+    }
+
+    @Test func aJoinedDisableIsReportedOnce() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        let log = recordingDisabledAliases(of: engine)
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        let manualDisable = TrackedTask { try await engine.disableNow(aliasID: 1) }
+        await yieldRepeatedly()
+        gated.open()
+
+        try await manualDisable.value
+        _ = await events
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test(arguments: [
+        APIError.transport("offline"),
+        APIError.unauthorized,
+        APIError.server(status: 403, message: nil),
+    ])
+    func aFailedDisableIsNotReported(error: APIError) async throws {
+        let engine = makeEngine()
+        let log = recordingDisabledAliases(of: engine)
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [error]
+        clock.advance(by: 300)
+
+        _ = await engine.processDue()
+
+        #expect(log.aliasIDs.isEmpty)
+    }
+
     // MARK: - Mail arrival
 
     private func forwardActivity(at timestamp: Date) -> AliasActivity {
@@ -1156,6 +1232,10 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.records.isEmpty)
         #expect(store.records.isEmpty)
     }
+}
+
+@MainActor private final class DisabledAliasLog {
+    var aliasIDs: [Int] = []
 }
 
 /// A main-actor task that remembers whether its operation has returned.

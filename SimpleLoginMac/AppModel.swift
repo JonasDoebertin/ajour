@@ -43,6 +43,7 @@ enum AliasActionError: Error, Equatable {
     private(set) var api: SimpleLoginAPI?
     @ObservationIgnored var onTimerEvents: ([TimerEvent]) -> Void = { _ in }
     @ObservationIgnored var onMailArrivals: ([MailArrival]) -> Void = { _ in }
+    /// Called for each alias as soon as the app has disabled it.
     @ObservationIgnored var onAliasDisabled: (Int) -> Void = { _ in }
     @ObservationIgnored var onNewAliasCopied: (String) -> Void = { _ in }
     /// Set when timed disables stop because the server rejected the key, until a new key is saved.
@@ -85,6 +86,7 @@ enum AliasActionError: Error, Equatable {
         self.copyToClipboard = copyToClipboard
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now)
+        engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
     }
 
     /// A request on a dead connection, for example right after wake, gives up after 15 seconds instead of
@@ -191,8 +193,6 @@ enum AliasActionError: Error, Equatable {
     func disableNow(aliasID: Int) async -> Bool {
         await perform(on: aliasID) {
             try await engine.disableNow(aliasID: aliasID)
-            recordEnabled(false, aliasID: aliasID)
-            onAliasDisabled(aliasID)
         }
     }
 
@@ -312,9 +312,6 @@ enum AliasActionError: Error, Equatable {
         let work = Task {
             let events = await engine.processDue()
             dueProcessing = nil
-            for case .disabled(let aliasID, _) in events {
-                recordEnabled(false, aliasID: aliasID)
-            }
             guard !events.isEmpty, !Task.isCancelled else { return }
             if events.contains(.unauthorized) { apiKeyInvalid = true }
             onTimerEvents(events)
@@ -429,6 +426,12 @@ enum AliasActionError: Error, Equatable {
             }
             throw error
         }
+    }
+
+    /// Every disable the engine completes, whether from expiry, a manual action, quit, or sign-out, shows right away.
+    private func aliasWasDisabled(_ aliasID: Int) {
+        recordEnabled(false, aliasID: aliasID)
+        onAliasDisabled(aliasID)
     }
 
     /// Shows the new state right away in the menu and in lists loaded before, instead of waiting for a reload.

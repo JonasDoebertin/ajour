@@ -29,6 +29,8 @@ public enum TimerEngineError: Error, Equatable {
     public private(set) var records: [TimerRecord]
     public private(set) var failures: [Int: DisableFailure] = [:]
     public private(set) var loadError: TimerStoreError?
+    /// Called once per successful disable, as soon as it succeeds, whether it came from expiry, `disableNow`, or `disableAll`.
+    @ObservationIgnored public var onAliasDisabled: (@MainActor (Int) -> Void)?
 
     private static let retryDelays: [TimeInterval] = [5, 10, 20, 40, 60]
     private static let failureReportDelay: TimeInterval = 120
@@ -244,6 +246,7 @@ public enum TimerEngineError: Error, Equatable {
             disablesInFlight[aliasID] = nil
             if case .disabled = outcome {
                 try? removeRecord(aliasID: aliasID)
+                onAliasDisabled?(aliasID)
             }
             return outcome
         }
