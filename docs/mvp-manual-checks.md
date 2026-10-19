@@ -4,6 +4,8 @@ Checks that need a real SimpleLogin account and the running app. Automated tests
 
 Tip: for expiry checks, temporarily shorten `AliasDuration.fiveMinutes.seconds` locally (don't commit it).
 
+The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by an earlier build (Keychain service `de.doebertin.simplelogin-macos`) is not found. Enter it once during onboarding, then delete the old item in Keychain Access.
+
 ## Onboarding and settings
 
 1. First launch shows onboarding.
@@ -12,8 +14,9 @@ Tip: for expiry checks, temporarily shorten `AliasDuration.fiveMinutes.seconds` 
 4. After a relaunch, no onboarding appears, and Settings shows name and email.
 5. Settings > Sign Out returns to onboarding.
 6. Settings > Replace API Key… goes straight to the key step and closes after confirmation.
-7. Copy a key in the browser and switch back: "Use key from clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
-8. With ad-hoc signing, the Launch-at-login toggle may show "Could not change launch at login. …" instead of crashing.
+7. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
+8. Copy a key in the browser and switch back: "Use key from clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
+9. With ad-hoc signing, the Launch-at-login toggle may show "Could not change launch at login. …" instead of crashing.
 
 ## Menu: pinned and timed aliases
 
@@ -44,7 +47,7 @@ Tip: for expiry checks, temporarily shorten `AliasDuration.fiveMinutes.seconds` 
 5. Quit the app while a "Mail received" notification is still in Notification Center, then click it. The app launches and the alias gets disabled.
 6. Turn off Wi-Fi, let a shortened timer expire, and wait 2 minutes. One "Could not disable alias" notification appears. Turn Wi-Fi back on: the alias gets disabled and that notification is withdrawn.
 7. Revoke the API key in the SimpleLogin web app while a timer runs, and let it expire. One "API key invalid" notification appears, and the menu shows "API key invalid – Re-enter Key…". Choose it, enter a valid key, and the menu item disappears while the pending disable runs.
-8. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > SimpleLogin for macOS.
+8. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > Ajour.
 
 ## Creating aliases
 

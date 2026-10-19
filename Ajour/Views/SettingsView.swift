@@ -21,6 +21,11 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                 }
             }
+            Section("About") {
+                Text(AboutText.tagline)
+                Text(AboutText.disclaimer)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 420)

@@ -46,7 +46,9 @@ struct OnboardingView: View {
         Group {
             Text("Welcome to Ajour")
                 .font(.title2.bold())
-            Text("The app needs a SimpleLogin API key to enable and disable your aliases. It never sees your password.")
+            Text(AboutText.tagline)
+                .foregroundStyle(.secondary)
+            Text("Ajour needs a SimpleLogin API key to enable and disable your aliases. It never sees your password.")
             HStack {
                 Spacer()
                 Button("Continue") { model.showKeyEntry() }
