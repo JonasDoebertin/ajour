@@ -602,7 +602,6 @@ final class TestClock: @unchecked Sendable {
 
     @Test(arguments: [
         APIError.server(status: 404, message: nil),
-        APIError.server(status: 403, message: "Forbidden"),
         APIError.server(status: 400, message: "Unknown error"),
     ])
     func processDueDropsRecordOfAliasThatIsGone(error: APIError) async throws {
@@ -651,10 +650,125 @@ final class TestClock: @unchecked Sendable {
     @Test func disableAllTreatsGoneAliasAsDisabled() async throws {
         let engine = makeEngine()
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
-        api.errors = [APIError.server(status: 403, message: nil)]
+        api.errors = [APIError.server(status: 404, message: nil)]
 
         #expect(await engine.disableAll(within: .seconds(5)))
         #expect(engine.records.isEmpty)
+    }
+
+    // MARK: - Aliases the key may not disable
+
+    private let forbidden = APIError.server(status: 403, message: "Forbidden")
+
+    @Test func forbiddenDisableKeepsTheRecordAndReportsItOnce() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden, forbidden]
+        clock.advance(by: 300)
+
+        #expect(await engine.processDue() == [.disableForbidden(aliasID: 1, email: "one@example.com")])
+        #expect(engine.record(for: 1) != nil)
+        #expect(store.records.count == 1)
+        #expect(engine.failures[1] == .forbidden)
+        #expect(engine.nextDueDate() == nil)
+
+        clock.advance(by: 3600)
+        #expect(await engine.processDue().isEmpty)
+        #expect(api.errors.count == 1)
+    }
+
+    @Test func forbiddenDisableOfOneAliasLeavesOthersDue() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+
+        let events = await engine.processDue()
+
+        #expect(events == [
+            .disableForbidden(aliasID: 1, email: "one@example.com"),
+            .disabled(aliasID: 2, email: "two@example.com"),
+        ])
+        #expect(engine.records.map(\.aliasID) == [1])
+    }
+
+    @Test func forbiddenDisableIsRetriedAfterKeyChange() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+
+        engine.resumeAfterKeyChange()
+
+        #expect(engine.failures.isEmpty)
+        #expect(await engine.processDue() == [.disabled(aliasID: 1, email: "one@example.com")])
+        #expect(engine.records.isEmpty)
+    }
+
+    @Test func forbiddenFromBeforeKeyChangeIsIgnored() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        engine.resumeAfterKeyChange()
+        gated.open()
+
+        #expect(await events.isEmpty)
+        #expect(engine.failures.isEmpty)
+        #expect(await engine.processDue() == [.disabled(aliasID: 1, email: "one@example.com")])
+    }
+
+    @Test func extendKeepsForbiddenState() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+
+        try engine.extend(aliasID: 1, by: .fiveMinutes)
+
+        #expect(engine.failures[1] == .forbidden)
+        #expect(engine.nextDueDate() == nil)
+    }
+
+    @Test func cancelTimerDropsAForbiddenRecord() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+
+        try engine.cancelTimer(aliasID: 1)
+
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+        #expect(engine.failures.isEmpty)
+    }
+
+    @Test func disableNowOfAForbiddenAliasKeepsTheRecord() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+
+        await #expect(throws: forbidden) {
+            try await engine.disableNow(aliasID: 1)
+        }
+
+        #expect(engine.record(for: 1) != nil)
+    }
+
+    @Test func disableAllKeepsTheRecordOfAForbiddenAlias() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+
+        #expect(await engine.disableAll(within: .seconds(5)) == false)
+        #expect(engine.records.count == 1)
+        #expect(store.records.count == 1)
     }
 
     // MARK: - Operations overlapping an in-flight disable

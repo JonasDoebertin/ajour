@@ -51,6 +51,16 @@ struct NotificationContentFactoryTests {
         #expect(content.aliasID == 7)
     }
 
+    @Test func forbiddenDisableSaysTheCurrentKeyCannotDisableTheAlias() throws {
+        let content = try #require(NotificationContentFactory.content(for: .disableForbidden(aliasID: 7, email: "shop@example.com")))
+
+        #expect(content.title == "Could not disable alias")
+        #expect(content.body == "shop@example.com can't be disabled with the current API key.")
+        #expect(content.identifier == "disable-forbidden-7")
+        #expect(content.categoryIdentifier == "")
+        #expect(content.aliasID == 7)
+    }
+
     @Test func invalidAPIKeyAsksToReEnterIt() throws {
         let content = try #require(NotificationContentFactory.content(for: .unauthorized))
 

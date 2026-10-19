@@ -40,6 +40,13 @@ enum NotificationContentFactory {
                 body: "\(email) is still enabled. Will keep trying.",
                 aliasID: aliasID
             )
+        case .disableForbidden(let aliasID, let email):
+            NotificationContent(
+                identifier: "disable-forbidden-\(aliasID)",
+                title: "Could not disable alias",
+                body: "\(email) can't be disabled with the current API key.",
+                aliasID: aliasID
+            )
         case .unauthorized:
             NotificationContent(
                 identifier: "api-key-invalid",

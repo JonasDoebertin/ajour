@@ -4,11 +4,14 @@ import Observation
 public enum DisableFailure: Equatable, Sendable {
     case transient(firstFailedAt: Date, attempts: Int, nextRetryAt: Date, reported: Bool)
     case unauthorized
+    /// The current key may not change the alias, so retrying with it is pointless.
+    case forbidden
 }
 
 public enum TimerEvent: Equatable, Sendable {
     case disabled(aliasID: Int, email: String)
     case disableKeepsFailing(aliasID: Int, email: String)
+    case disableForbidden(aliasID: Int, email: String)
     case unauthorized
 }
 
@@ -111,6 +114,7 @@ public enum TimerEngineError: Error, Equatable {
         switch await disable(aliasID: aliasID) {
         case .disabled: return
         case .unauthorized: throw APIError.unauthorized
+        case .forbidden(_, let error): throw error
         case .cancelled: throw CancellationError()
         case .failed(let error): throw error
         }
@@ -130,6 +134,9 @@ public enum TimerEngineError: Error, Equatable {
                     events.append(.unauthorized)
                 }
                 return events
+            case .forbidden(let generation, _):
+                guard generation == keyGeneration, markForbidden(aliasID: aliasID) else { continue }
+                events.append(.disableForbidden(aliasID: aliasID, email: record.email))
             case .cancelled:
                 return events
             case .failed:
@@ -162,7 +169,7 @@ public enum TimerEngineError: Error, Equatable {
     public func nextDueDate() -> Date? {
         records.compactMap { record -> Date? in
             switch failures[record.aliasID] {
-            case .unauthorized: nil
+            case .unauthorized, .forbidden: nil
             case .transient(_, _, let nextRetryAt, _): max(nextRetryAt, record.expiresAt)
             case nil: record.expiresAt
             }
@@ -171,7 +178,7 @@ public enum TimerEngineError: Error, Equatable {
 
     public func resumeAfterKeyChange() {
         keyGeneration += 1
-        failures = failures.filter { $0.value != .unauthorized }
+        failures = failures.filter { $0.value != .unauthorized && $0.value != .forbidden }
     }
 
     /// Tries to disable every timed alias once, in parallel. Gives up when the budget runs out;
@@ -255,6 +262,8 @@ public enum TimerEngineError: Error, Equatable {
             return .cancelled
         } catch APIError.unauthorized {
             return .unauthorized(generation: keyGeneration)
+        } catch APIError.server(status: 403, let message) {
+            return .forbidden(generation: keyGeneration, error: .server(status: 403, message: message))
         } catch where isAliasGone(error) {
             return .disabled
         } catch {
@@ -262,10 +271,11 @@ public enum TimerEngineError: Error, Equatable {
         }
     }
 
-    /// SimpleLogin answers 404, 403 (someone else's alias), or 400 "Unknown error" for aliases that don't exist.
+    /// SimpleLogin answers 404 or 400 "Unknown error" for aliases that don't exist. A 403 is different: the alias
+    /// belongs to another account, for example after the key was replaced, and may still be enabled there.
     nonisolated private static func isAliasGone(_ error: any Error) -> Bool {
         switch error as? APIError {
-        case .server(status: 404, _), .server(status: 403, _), .server(status: 400, message: "Unknown error"):
+        case .server(status: 404, _), .server(status: 400, message: "Unknown error"):
             true
         default:
             false
@@ -276,7 +286,7 @@ public enum TimerEngineError: Error, Equatable {
         let currentDate = now()
         guard record.expiresAt <= currentDate else { return false }
         switch failures[record.aliasID] {
-        case .unauthorized: return false
+        case .unauthorized, .forbidden: return false
         case .transient(_, _, let nextRetryAt, _): return nextRetryAt <= currentDate
         case nil: return true
         }
@@ -289,6 +299,13 @@ public enum TimerEngineError: Error, Equatable {
             failures[record.aliasID] = .unauthorized
         }
         return !wasAlreadyUnauthorized
+    }
+
+    /// Returns whether the alias is still timed and so now waits for a new key.
+    private func markForbidden(aliasID: Int) -> Bool {
+        guard recordIndex(for: aliasID) != nil else { return false }
+        failures[aliasID] = .forbidden
+        return true
     }
 
     /// Returns whether the failure has now lasted long enough to be reported, which happens once.
@@ -323,7 +340,7 @@ public enum TimerEngineError: Error, Equatable {
         records.firstIndex { $0.aliasID == aliasID }
     }
 
-    /// An invalid key stays invalid after extending; only a new key clears it.
+    /// An invalid or forbidden key stays so after extending; only a new key clears it.
     private func extendRecord(at index: Int, by duration: AliasDuration) throws -> TimerRecord {
         records[index].expiresAt = now().addingTimeInterval(duration.seconds)
         let aliasID = records[index].aliasID
@@ -361,6 +378,7 @@ public enum TimerEngineError: Error, Equatable {
 private enum DisableOutcome: Sendable {
     case disabled
     case unauthorized(generation: Int)
+    case forbidden(generation: Int, error: APIError)
     case cancelled
     case failed(any Error)
 }
