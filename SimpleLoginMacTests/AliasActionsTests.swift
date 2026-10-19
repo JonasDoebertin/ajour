@@ -343,6 +343,47 @@ struct AliasActionsTests {
         #expect(requestCount(path: "/api/aliases/7") == 1)
     }
 
+    @Test func keepEnabledStopsTheTimerAndLeavesTheAliasEnabled() async throws {
+        let test = AliasActionsTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+
+        let succeeded = await model.keepEnabled(aliasID: 7)
+
+        #expect(succeeded)
+        #expect(model.engine.record(for: 7) == nil)
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 0)
+        #expect(model.menuSections.pinned.first?.state == .enabled)
+        #expect(model.lastError == nil)
+    }
+
+    @Test func keepEnabledWithUnreadableTimerDataShowsWhy() async throws {
+        let test = AliasActionsTests(timerStore: UnavailableTimerStore(reason: "test"))
+        let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7)])
+
+        let succeeded = await model.keepEnabled(aliasID: 7)
+
+        #expect(succeeded == false)
+        #expect(model.lastError == "Timer data is unreadable, so timers can't be started or changed.")
+    }
+
+    @Test func keepEnabledWhileTheTimerIsExpiringShowsWhy() async throws {
+        let expiring = TimerRecord(aliasID: 7, email: "shop@example.com", enabledAt: clock.now.addingTimeInterval(-300), expiresAt: clock.now)
+        let test = AliasActionsTests(records: [expiring])
+        let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7)])
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let expiry = Task { await model.tick() }
+        await test.transport.waitUntilARequestIsHeld()
+
+        let succeeded = await model.keepEnabled(aliasID: 7)
+        test.transport.release()
+        await expiry.value
+
+        #expect(succeeded == false)
+        #expect(model.lastError == "The alias is being disabled right now. Try again in a moment.")
+    }
+
     @Test func copyPutsTheEmailOnTheClipboard() {
         var copied: [String] = []
         let model = makeModel { copied.append($0) }

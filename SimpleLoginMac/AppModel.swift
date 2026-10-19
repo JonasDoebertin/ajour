@@ -20,6 +20,8 @@ enum SignOutError: Error, Equatable {
 enum AliasCreationError: Error, Equatable {
     case stillEnabledWithoutTimer(email: String)
     case accountChanged(email: String)
+    case disabledAfterAccountChange(email: String)
+    case stillEnabledAfterAccountChange(email: String)
 }
 
 @MainActor @Observable final class AppModel {
@@ -52,6 +54,10 @@ enum AliasCreationError: Error, Equatable {
     /// Changes when a pinned refresh starts or the pinned list is patched locally, so an older refresh
     /// never overwrites newer data.
     @ObservationIgnored private var pinnedRevision = 0
+    /// The enabled state this app last gave each alias, so lists loaded earlier don't show an outdated one.
+    private var enabledChanges: [Int: EnabledChange] = [:]
+    /// Counts enabled changes; a list remembers it when it loads, to tell older changes from newer ones.
+    @ObservationIgnored private(set) var enabledChangeSequence = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
     @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
@@ -169,7 +175,7 @@ enum AliasCreationError: Error, Equatable {
     func enable(aliasID: Int, for duration: AliasDuration) async -> Bool {
         await perform(on: aliasID) {
             _ = try await engine.enable(aliasID: aliasID, for: duration)
-            markPinned(aliasID: aliasID, enabled: true)
+            recordEnabled(true, aliasID: aliasID)
         }
     }
 
@@ -181,7 +187,7 @@ enum AliasCreationError: Error, Equatable {
     func disableNow(aliasID: Int) async -> Bool {
         await perform(on: aliasID) {
             try await engine.disableNow(aliasID: aliasID)
-            markPinned(aliasID: aliasID, enabled: false)
+            recordEnabled(false, aliasID: aliasID)
             onAliasDisabled(aliasID)
         }
     }
@@ -198,7 +204,7 @@ enum AliasCreationError: Error, Equatable {
             _ = try await createAlias(expiringAfter: duration) { try await $0.createRandomAlias() }
             lastError = nil
         } catch {
-            guard session == self.session else { return }
+            guard session == self.session || error is AliasCreationError else { return }
             lastError = Self.userMessage(for: error)
         }
     }
@@ -227,8 +233,23 @@ enum AliasCreationError: Error, Equatable {
         await perform(on: aliasID) {
             guard let api else { throw TimerEngineError.notSignedIn }
             _ = try await AliasSwitch(api: api).ensureEnabled(aliasID: aliasID)
-            markPinned(aliasID: aliasID, enabled: true)
+            recordEnabled(true, aliasID: aliasID)
         }
+    }
+
+    /// Stops the alias's timer and leaves the alias enabled.
+    @discardableResult
+    func keepEnabled(aliasID: Int) async -> Bool {
+        await perform(on: aliasID) {
+            try engine.cancelTimer(aliasID: aliasID)
+            recordEnabled(true, aliasID: aliasID)
+        }
+    }
+
+    /// The state this app gave the alias after `sequence`, if it changed it since.
+    func knownEnabled(aliasID: Int, since sequence: Int) -> Bool? {
+        guard let change = enabledChanges[aliasID], change.sequence > sequence else { return nil }
+        return change.enabled
     }
 
     func isBusy(aliasID: Int) -> Bool {
@@ -282,6 +303,9 @@ enum AliasCreationError: Error, Equatable {
         let work = Task {
             let events = await engine.processDue()
             dueProcessing = nil
+            for case .disabled(let aliasID, _) in events {
+                recordEnabled(false, aliasID: aliasID)
+            }
             guard !events.isEmpty, !Task.isCancelled else { return }
             if events.contains(.unauthorized) { apiKeyInvalid = true }
             onTimerEvents(events)
@@ -354,7 +378,7 @@ enum AliasCreationError: Error, Equatable {
     }
 
     /// A new alias is created enabled. It is only copied once its timer, if any, runs.
-    /// An alias created for an account that was signed out or replaced meanwhile is left as it is.
+    /// An alias created for an account that was signed out or replaced meanwhile isn't timed or copied.
     private func createAlias(
         expiringAfter duration: AliasDuration?,
         _ create: (SimpleLoginAPI) async throws -> Alias
@@ -362,13 +386,26 @@ enum AliasCreationError: Error, Equatable {
         guard let api else { throw TimerEngineError.notSignedIn }
         let session = self.session
         let alias = try await create(api)
-        guard session == self.session else { throw AliasCreationError.accountChanged(email: alias.email) }
+        guard session == self.session else {
+            throw await abandonAfterAccountChange(alias, using: api, wasToExpire: duration != nil)
+        }
         if let duration {
             try await startTimer(forNewAlias: alias, duration: duration)
         }
         copyToClipboard(alias.email)
         onNewAliasCopied(alias.email)
         return alias
+    }
+
+    /// An alias meant to expire must not stay enabled untracked, so it is disabled with the key it was created with.
+    private func abandonAfterAccountChange(_ alias: Alias, using api: SimpleLoginAPI, wasToExpire: Bool) async -> AliasCreationError {
+        guard wasToExpire else { return .accountChanged(email: alias.email) }
+        do {
+            _ = try await AliasSwitch(api: api).ensureDisabled(aliasID: alias.id)
+            return .disabledAfterAccountChange(email: alias.email)
+        } catch {
+            return .stillEnabledAfterAccountChange(email: alias.email)
+        }
     }
 
     /// A new alias whose timer can't start is disabled again right away, so it never stays enabled untracked.
@@ -385,7 +422,13 @@ enum AliasCreationError: Error, Equatable {
         }
     }
 
-    /// Shows the new state right away instead of waiting for the next refresh.
+    /// Shows the new state right away in the menu and in lists loaded before, instead of waiting for a reload.
+    private func recordEnabled(_ enabled: Bool, aliasID: Int) {
+        enabledChangeSequence += 1
+        enabledChanges[aliasID] = EnabledChange(enabled: enabled, sequence: enabledChangeSequence)
+        markPinned(aliasID: aliasID, enabled: enabled)
+    }
+
     private func markPinned(aliasID: Int, enabled: Bool) {
         pinnedRevision += 1
         guard let index = pinned.firstIndex(where: { $0.id == aliasID }) else { return }
@@ -409,9 +452,15 @@ enum AliasCreationError: Error, Equatable {
         case AliasCreationError.stillEnabledWithoutTimer(let email):
             "\(email) was created, but its timer could not start and it is still enabled."
         case AliasCreationError.accountChanged(let email):
-            "\(email) was created, but the API key changed before it could be set up."
+            "\(email) was created for the previous account."
+        case AliasCreationError.disabledAfterAccountChange(let email):
+            "\(email) was created for the previous account and has been disabled."
+        case AliasCreationError.stillEnabledAfterAccountChange(let email):
+            "\(email) was created for the previous account and could not be disabled."
         case TimerEngineError.notSignedIn:
             "Not signed in. Set up your API key first."
+        case TimerEngineError.disableInProgress:
+            "The alias is being disabled right now. Try again in a moment."
         case TimerEngineError.storeUnavailable:
             "Timer data is unreadable, so timers can't be started or changed."
         case is AliasSwitchError:
@@ -423,11 +472,17 @@ enum AliasCreationError: Error, Equatable {
 
     private func connect(_ api: SimpleLoginAPI?) {
         session += 1
+        enabledChanges = [:]
         lastError = nil
         apiKeyInvalid = false
         self.api = api
         engine.api = api
     }
+}
+
+struct EnabledChange: Equatable {
+    let enabled: Bool
+    let sequence: Int
 }
 
 extension Alias {

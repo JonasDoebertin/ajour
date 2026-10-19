@@ -8,9 +8,13 @@ import SimpleLoginKit
     private(set) var aliases: [Alias] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    /// False until the current list's first page has answered, so it isn't called empty before.
+    private var hasLoadedFirstPage = false
     private var query = ""
     private var nextPage = 0
     private var hasMorePages = true
+    /// The app's enabled changes up to here are already reflected in the loaded rows.
+    private var listStartSequence = 0
     /// Changes whenever the list starts over, so a page that arrives for an older list is dropped.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var pendingSearch: Task<Void, Never>?
@@ -72,6 +76,7 @@ import SimpleLoginKit
         }
         guard generation == self.generation else { return }
         isLoading = false
+        hasLoadedFirstPage = true
         switch result {
         case .success(let page):
             let listedIDs = Set(aliases.map(\.id))
@@ -84,12 +89,13 @@ import SimpleLoginKit
         }
     }
 
-    /// A running timer wins over the row's enabled flag, which may be older.
+    /// A running timer, or a change the app made after the row loaded, wins over the row's enabled flag.
     func state(of alias: Alias) -> AliasMenuState {
         if let record = appModel.engine.record(for: alias.id) {
             return .timed(remaining: max(0, record.expiresAt.timeIntervalSince(appModel.now)))
         }
-        return alias.enabled ? .enabled : .disabled
+        let enabled = appModel.knownEnabled(aliasID: alias.id, since: listStartSequence) ?? alias.enabled
+        return enabled ? .enabled : .disabled
     }
 
     func stateLabel(for alias: Alias) -> String {
@@ -98,6 +104,10 @@ import SimpleLoginKit
         case .enabled: "Enabled"
         case .timed(let remaining): "\(RemainingTime.format(remaining)) left"
         }
+    }
+
+    var showsEmptyState: Bool {
+        hasLoadedFirstPage && aliases.isEmpty && errorMessage == nil
     }
 
     func isBusy(_ alias: Alias) -> Bool {
@@ -115,23 +125,27 @@ import SimpleLoginKit
     }
 
     /// Enables a disabled alias for a while, extends a running timer, or times an enabled alias.
+    /// Rows show the new state through `state(of:)`, like after any other change the app makes.
     func enable(_ alias: Alias, for duration: AliasDuration) async {
-        guard await appModel.enable(aliasID: alias.id, for: duration) else { return }
-        updateRow(aliasID: alias.id) { $0.settingEnabled(true) }
+        await appModel.enable(aliasID: alias.id, for: duration)
     }
 
     func enablePermanently(_ alias: Alias) async {
-        guard await appModel.enablePermanently(aliasID: alias.id) else { return }
-        updateRow(aliasID: alias.id) { $0.settingEnabled(true) }
+        await appModel.enablePermanently(aliasID: alias.id)
+    }
+
+    func keepEnabled(_ alias: Alias) async {
+        await appModel.keepEnabled(aliasID: alias.id)
     }
 
     func disable(_ alias: Alias) async {
-        guard await appModel.disableNow(aliasID: alias.id) else { return }
-        updateRow(aliasID: alias.id) { $0.settingEnabled(false) }
+        await appModel.disableNow(aliasID: alias.id)
     }
 
     private func startOver(query: String) async {
         generation += 1
+        listStartSequence = appModel.enabledChangeSequence
+        hasLoadedFirstPage = false
         self.query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         aliases = []
         nextPage = 0

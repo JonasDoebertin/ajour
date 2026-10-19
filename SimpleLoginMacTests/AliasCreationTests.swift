@@ -134,25 +134,56 @@ final class AliasCreationTests {
         #expect(model.lastError == "random@example.com was created, but its timer could not start and it is still enabled.")
     }
 
-    @Test func aRandomAliasCreatedWhileSigningOutIsNotTimedCopiedOrAnnounced() async throws {
-        let model = try await signedInModel()
+    /// Starts creating a random alias that is held at the server, then signs out before it arrives.
+    func createRandomAliasAcrossSignOut(model: AppModel, expiringAfter duration: AliasDuration?) async throws {
         transport.holdNext("/api/alias/random/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
-        let create = Task { await model.createRandomAlias(expiringAfter: .fiveMinutes) }
+        let create = Task { await model.createRandomAlias(expiringAfter: duration) }
         await transport.waitUntilARequestIsHeld()
-
         try await model.signOut()
         transport.release()
         await create.value
+    }
 
+    @Test func anExpiringRandomAliasCreatedWhileSigningOutIsDisabledWithThePreviousKey() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/42", json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
+        transport.enqueue("/api/aliases/42/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        try await createRandomAliasAcrossSignOut(model: model, expiringAfter: .fiveMinutes)
+
+        let toggle = transport.requests.filter { $0.url?.path == "/api/aliases/42/toggle" }
+        #expect(toggle.map { $0.value(forHTTPHeaderField: "Authentication") } == ["valid-key"])
         #expect(model.engine.records.isEmpty)
         #expect(copied.isEmpty)
         #expect(announced.isEmpty)
-        #expect(model.lastError == nil)
+        #expect(model.lastError == "random@example.com was created for the previous account and has been disabled.")
     }
 
-    @Test func aCustomAliasCreatedWhileTheKeyChangesIsNotTimedCopiedOrAnnounced() async throws {
+    @Test func anExpiringRandomAliasCreatedWhileSigningOutSaysWhenItStaysEnabled() async throws {
+        let model = try await signedInModel()
+
+        try await createRandomAliasAcrossSignOut(model: model, expiringAfter: .fiveMinutes)
+
+        #expect(model.engine.records.isEmpty)
+        #expect(model.lastError == "random@example.com was created for the previous account and could not be disabled.")
+    }
+
+    @Test func aRandomAliasWithoutExpiryCreatedWhileSigningOutStaysEnabled() async throws {
+        let model = try await signedInModel()
+
+        try await createRandomAliasAcrossSignOut(model: model, expiringAfter: nil)
+
+        #expect(requestCount(path: "/api/aliases/42/toggle") == 0)
+        #expect(copied.isEmpty)
+        #expect(announced.isEmpty)
+        #expect(model.lastError == "random@example.com was created for the previous account.")
+    }
+
+    @Test func anExpiringCustomAliasCreatedWhileTheKeyChangesIsDisabledWithThePreviousKey() async throws {
         let model = try await signedInModel()
         transport.holdNext("/api/v3/alias/custom/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
+        transport.enqueue("/api/aliases/50", json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
+        transport.enqueue("/api/aliases/50/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
         let create = Task { try await model.createCustomAlias(prefix: "shop", suffix: Self.customSuffix, mailboxID: 3, expiringAfter: .oneHour) }
         await transport.waitUntilARequestIsHeld()
 
@@ -160,8 +191,9 @@ final class AliasCreationTests {
         _ = try await model.signIn(apiKey: "other-account-key")
         transport.release()
 
-        await #expect(throws: AliasCreationError.accountChanged(email: "shop@my.dev")) { try await create.value }
-
+        await #expect(throws: AliasCreationError.disabledAfterAccountChange(email: "shop@my.dev")) { try await create.value }
+        let toggle = transport.requests.filter { $0.url?.path == "/api/aliases/50/toggle" }
+        #expect(toggle.map { $0.value(forHTTPHeaderField: "Authentication") } == ["valid-key"])
         #expect(model.engine.records.isEmpty)
         #expect(copied.isEmpty)
         #expect(announced.isEmpty)

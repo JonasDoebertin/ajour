@@ -18,7 +18,7 @@ struct AllAliasesView: View {
                 listFooter
             }
             .overlay {
-                if model.aliases.isEmpty, !model.isLoading, model.errorMessage == nil {
+                if model.showsEmptyState {
                     ContentUnavailableView(
                         model.searchText.isEmpty ? "No Aliases" : "No Matching Aliases",
                         systemImage: "envelope"
@@ -105,6 +105,9 @@ private struct AliasRowActions: View {
                 }
             case .timed:
                 disableButton
+                Button("Keep Enabled") {
+                    Task { await model.keepEnabled(alias) }
+                }
                 Menu("Extend") {
                     durationButtons(title: { $0 })
                 }

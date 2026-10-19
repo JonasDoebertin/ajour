@@ -153,6 +153,66 @@ final class TestClock: @unchecked Sendable {
         #expect(store.records.count == 1)
     }
 
+    // MARK: - Keeping enabled
+
+    @Test func cancelTimerStopsTrackingAndLeavesTheAliasEnabled() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+
+        try engine.cancelTimer(aliasID: 1)
+
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == true)
+        #expect(api.toggleCalls == [1])
+    }
+
+    @Test func cancelTimerForgetsAFailedDisable() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.transport("offline")]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        #expect(engine.failures[1] != nil)
+
+        try engine.cancelTimer(aliasID: 1)
+
+        #expect(engine.failures.isEmpty)
+        #expect(engine.nextDueDate() == nil)
+    }
+
+    @Test func cancelTimerWithUnreadableTimerDataIsRefused() {
+        let engine = makeEngine(store: InMemoryTimerStore(records: [], failLoad: true))
+
+        #expect(throws: TimerEngineError.storeUnavailable) {
+            try engine.cancelTimer(aliasID: 1)
+        }
+    }
+
+    @Test func cancelTimerIsRefusedWhileTheAliasIsBeingDisabled() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        clock.advance(by: 300)
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+
+        #expect(throws: TimerEngineError.disableInProgress) {
+            try engine.cancelTimer(aliasID: 1)
+        }
+        #expect(engine.record(for: 1) != nil)
+        gated.open()
+
+        #expect(await events == [.disabled(aliasID: 1, email: "one@example.com")])
+    }
+
+    @Test func cancelTimerWithoutATimerChangesNothing() throws {
+        let engine = makeEngine()
+
+        try engine.cancelTimer(aliasID: 1)
+
+        #expect(engine.records.isEmpty)
+        #expect(api.toggleCalls.isEmpty)
+    }
+
     // MARK: - Persistence
 
     @Test func recordsSurviveRestart() async throws {

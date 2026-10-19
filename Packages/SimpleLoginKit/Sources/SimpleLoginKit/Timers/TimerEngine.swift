@@ -15,6 +15,7 @@ public enum TimerEvent: Equatable, Sendable {
 public enum TimerEngineError: Error, Equatable {
     case notSignedIn
     case storeUnavailable
+    case disableInProgress
 }
 
 @MainActor @Observable public final class TimerEngine {
@@ -89,6 +90,15 @@ public enum TimerEngineError: Error, Equatable {
         try ensureStoreAvailable()
         guard let index = recordIndex(for: aliasID) else { return }
         _ = try extendRecord(at: index, by: duration)
+    }
+
+    /// Stops tracking the alias and leaves it enabled. Refused while a disable of the alias runs instead of
+    /// waiting for it: that disable may already have turned the alias off, and keeping it enabled would then
+    /// need a new enable.
+    public func cancelTimer(aliasID: Int) throws {
+        try ensureStoreAvailable()
+        guard disablesInFlight[aliasID] == nil else { throw TimerEngineError.disableInProgress }
+        try removeRecord(aliasID: aliasID)
     }
 
     public func disableNow(aliasID: Int) async throws {

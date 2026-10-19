@@ -99,6 +99,9 @@ private struct AliasMenu: View {
                     }
                 case .timed:
                     disableNowButton
+                    Button("Keep Enabled") {
+                        Task { await model.keepEnabled(aliasID: item.id) }
+                    }
                     Menu("Extend") {
                         ForEach(AliasDuration.allCases, id: \.self) { duration in
                             Button(duration.title) { model.extend(aliasID: item.id, by: duration) }

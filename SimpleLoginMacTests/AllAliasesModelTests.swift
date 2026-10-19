@@ -156,6 +156,30 @@ final class AllAliasesModelTests {
         #expect(transport.requests.isEmpty)
     }
 
+    @Test func aNewWindowDoesNotClaimThereAreNoAliasesBeforeLoading() async throws {
+        let model = makeModel(appModel: try await signedInAppModel())
+
+        #expect(model.showsEmptyState == false)
+    }
+
+    @Test func anEmptyAccountSaysThereAreNoAliases() async throws {
+        let (model, _) = try await loadedModel([])
+
+        #expect(model.showsEmptyState)
+    }
+
+    @Test func aSearchThatIsStillLoadingDoesNotClaimThereAreNoMatches() async throws {
+        let (model, _) = try await loadedModel([])
+        transport.holdNext("/api/v2/aliases", method: "POST", json: Fixtures.aliasPageJSON(ids: 5...5))
+        model.searchText = "shop"
+        let search = model.scheduleSearch()
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.showsEmptyState == false)
+        transport.release()
+        await search.value
+    }
+
     // MARK: Search
 
     @Test func searchingWaitsBrieflyThenSearchesForTheQuery() async throws {
@@ -250,6 +274,50 @@ final class AllAliasesModelTests {
         #expect(model.aliases.map(model.stateLabel) == ["3:12 left"])
     }
 
+    @Test func aRowWhoseTimerExpiredShowsAsDisabledInTheWindowAndTheMenu() async throws {
+        let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: false, pinned: true)])
+        transport.enqueue("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 7, enabled: false, pinned: true)]))
+        await appModel.refreshPinned()
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        await model.enable(try #require(model.aliases.first), for: .fiveMinutes)
+        clock.advance(by: 301)
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        for work in appModel.scheduleTick() { await work.value }
+
+        #expect(appModel.engine.records.isEmpty)
+        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(appModel.pinned.first?.enabled == false)
+    }
+
+    @Test func aRowDisabledFromANotificationShowsAsDisabled() async throws {
+        let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: false)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        await model.enable(try #require(model.aliases.first), for: .fiveMinutes)
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await appModel.disableNow(aliasID: 7)
+
+        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+    }
+
+    @Test func reloadingShowsTheServersStateOverAnEarlierChangeByTheApp() async throws {
+        let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        await appModel.disableNow(aliasID: 7)
+        transport.enqueue("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 7, enabled: true)]))
+
+        await model.reload()
+
+        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+    }
+
     // MARK: Row actions
 
     @Test func pinningARowMarksItPinnedAndAddsItToTheMenu() async throws {
@@ -289,7 +357,6 @@ final class AllAliasesModelTests {
 
         await model.enable(try #require(model.aliases.first), for: .fiveMinutes)
 
-        #expect(model.aliases.first?.enabled == true)
         #expect(model.aliases.map(model.stateLabel) == ["5:00 left"])
         #expect(appModel.menuSections.timedUnpinned.map(\.id) == [7])
     }
@@ -323,6 +390,19 @@ final class AllAliasesModelTests {
 
         #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
         #expect(appModel.lastError == "Could not reach SimpleLogin. Check your network connection.")
+    }
+
+    @Test func keepingATimedRowEnabledStopsItsTimer() async throws {
+        let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: false)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        await model.enable(try #require(model.aliases.first), for: .fiveMinutes)
+
+        await model.keepEnabled(try #require(model.aliases.first))
+
+        #expect(appModel.engine.records.isEmpty)
+        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
     }
 
     @Test func copyingARowPutsItsAddressOnTheClipboard() async throws {
