@@ -8,9 +8,15 @@ import SimpleLoginKit
     let notifications: NotificationController
 
     override init() {
-        let notifications = NotificationController()
+        let model = AppModel(timerStore: Self.makeTimerStore())
+        let notifications = NotificationController { aliasID in
+            Task { await model.disableNow(aliasID: aliasID) }
+        }
+        model.onMailArrivals = { $0.forEach(notifications.post) }
+        model.onTimerEvents = { $0.forEach(notifications.post) }
+        model.onAliasDisabled = { notifications.removeNotifications(aliasID: $0) }
+        self.model = model
         self.notifications = notifications
-        model = AppModel(timerStore: Self.makeTimerStore())
         onboarding = OnboardingModel(
             appModel: model,
             launchAtLogin: .system,
@@ -18,6 +24,12 @@ import SimpleLoginKit
         )
         settings = SettingsModel(appModel: model, launchAtLogin: .system)
         super.init()
+    }
+
+    /// A click on a notification that launches the app is delivered only to a delegate set this early.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard !Self.isHostingUnitTests else { return }
+        notifications.activate()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

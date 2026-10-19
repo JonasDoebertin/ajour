@@ -174,6 +174,30 @@ struct AliasActionsTests {
         #expect(model.menuSections.pinned.first?.state == .enabled)
     }
 
+    @Test func disableNowReportsTheDisabledAlias() async throws {
+        let test = AliasActionsTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        var disabledAliasIDs: [Int] = []
+        model.onAliasDisabled = { disabledAliasIDs.append($0) }
+
+        await model.disableNow(aliasID: 7)
+
+        #expect(disabledAliasIDs == [7])
+    }
+
+    @Test func aFailedDisableNowReportsNothing() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        var disabledAliasIDs: [Int] = []
+        model.onAliasDisabled = { disabledAliasIDs.append($0) }
+
+        await model.disableNow(aliasID: 7)
+
+        #expect(disabledAliasIDs.isEmpty)
+    }
+
     @Test func disableAfterStartsATimerWithoutCallingTheAPI() async throws {
         let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
         let requestsBefore = transport.requests.count

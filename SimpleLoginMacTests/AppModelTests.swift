@@ -324,6 +324,44 @@ struct AppModelTests {
         #expect(model.engine.nextDueDate() != nil)
     }
 
+    @Test func aRevokedKeyDuringExpiryMarksTheAPIKeyInvalid() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        #expect(model.apiKeyInvalid == false)
+
+        await model.tick()
+
+        #expect(model.apiKeyInvalid)
+    }
+
+    @Test func savingANewKeyClearsTheInvalidAPIKeyMark() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        await model.tick()
+
+        test.transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        _ = try await model.signIn(apiKey: "replacement-key")
+
+        #expect(model.apiKeyInvalid == false)
+    }
+
+    @Test func aRejectedReplacementKeyKeepsTheInvalidAPIKeyMark() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        await model.tick()
+
+        test.transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
+        _ = try? await model.signIn(apiKey: "another-revoked-key")
+
+        #expect(model.apiKeyInvalid)
+    }
+
     @Test func signOutWithoutTimersRemovesTheKey() async throws {
         let model = try await signedInModel()
 

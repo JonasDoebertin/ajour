@@ -8,7 +8,7 @@ struct SimpleLoginMacApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: model)
+            MenuContent(model: model, onboarding: appDelegate.onboarding)
         } label: {
             MenuBarLabel(model: model)
         }

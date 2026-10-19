@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 import SimpleLoginKit
 @testable import SimpleLoginMac
 
@@ -176,4 +177,33 @@ final class TestClock: @unchecked Sendable {
 
 struct LaunchAtLoginRefused: LocalizedError {
     var errorDescription: String? { "Operation not permitted" }
+}
+
+@MainActor final class FakeNotificationCenter: UserNotificationCenter {
+    private(set) weak var delegate: (any UNUserNotificationCenterDelegate)?
+    private(set) var categories: Set<UNNotificationCategory> = []
+    private(set) var authorizationRequests: [UNAuthorizationOptions] = []
+    private(set) var addedRequests: [UNNotificationRequest] = []
+    private(set) var removedIdentifiers: [String] = []
+
+    func setDelegate(_ delegate: any UNUserNotificationCenterDelegate) {
+        self.delegate = delegate
+    }
+
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
+        self.categories = categories
+    }
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        authorizationRequests.append(options)
+        return true
+    }
+
+    func add(_ request: UNNotificationRequest) {
+        addedRequests.append(request)
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        removedIdentifiers += identifiers
+    }
 }

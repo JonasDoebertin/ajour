@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuContent: View {
     let model: AppModel
+    let onboarding: OnboardingModel
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
 
@@ -10,6 +11,13 @@ struct MenuContent: View {
         if let lastError = model.lastError {
             Button(lastError) {}
                 .disabled(true)
+            Divider()
+        }
+        if model.apiKeyInvalid {
+            Button("API key invalid – Re-enter Key…") {
+                onboarding.beginKeyReplacement()
+                openWindow.frontmost(id: OnboardingView.windowID)
+            }
             Divider()
         }
         if model.engine.loadError != nil {

@@ -32,6 +32,9 @@ enum SignOutError: Error, Equatable {
     private(set) var api: SimpleLoginAPI?
     @ObservationIgnored var onTimerEvents: ([TimerEvent]) -> Void = { _ in }
     @ObservationIgnored var onMailArrivals: ([MailArrival]) -> Void = { _ in }
+    @ObservationIgnored var onAliasDisabled: (Int) -> Void = { _ in }
+    /// Set when timed disables stop because the server rejected the key, until a new key is saved.
+    private(set) var apiKeyInvalid = false
 
     @ObservationIgnored private let keyStore: any APIKeyStoring
     @ObservationIgnored private let transport: any HTTPTransport
@@ -165,6 +168,7 @@ enum SignOutError: Error, Equatable {
         await perform(on: aliasID) {
             try await engine.disableNow(aliasID: aliasID)
             markPinned(aliasID: aliasID, enabled: false)
+            onAliasDisabled(aliasID)
         }
     }
 
@@ -224,7 +228,9 @@ enum SignOutError: Error, Equatable {
         let work = Task {
             let events = await engine.processDue()
             dueProcessing = nil
-            if !events.isEmpty, !Task.isCancelled { onTimerEvents(events) }
+            guard !events.isEmpty, !Task.isCancelled else { return }
+            if events.contains(.unauthorized) { apiKeyInvalid = true }
+            onTimerEvents(events)
         }
         dueProcessing = work
         return work
@@ -315,6 +321,7 @@ enum SignOutError: Error, Equatable {
     private func connect(_ api: SimpleLoginAPI?) {
         session += 1
         lastError = nil
+        apiKeyInvalid = false
         self.api = api
         engine.api = api
     }
