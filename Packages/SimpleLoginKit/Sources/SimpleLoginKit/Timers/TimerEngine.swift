@@ -18,7 +18,9 @@ public enum TimerEngineError: Error, Equatable {
 }
 
 @MainActor @Observable public final class TimerEngine {
-    public var api: (any AliasAPI)?
+    public var api: (any AliasAPI)? {
+        didSet { keyGeneration += 1 }
+    }
     public private(set) var records: [TimerRecord]
     public private(set) var failures: [Int: DisableFailure] = [:]
     public private(set) var loadError: TimerStoreError?
@@ -28,8 +30,11 @@ public enum TimerEngineError: Error, Equatable {
 
     private let store: any TimerStore
     private let now: @Sendable () -> Date
-    /// Two overlapping disables could both read "enabled" and toggle twice, re-enabling the alias.
-    @ObservationIgnored private var aliasesBeingDisabled: Set<Int> = []
+    /// Overlapping disables of one alias share a single attempt: two separate attempts could both
+    /// read "enabled" and toggle twice, re-enabling the alias.
+    @ObservationIgnored private var disablesInFlight: [Int: Task<DisableOutcome, Never>] = [:]
+    /// Changes whenever the key may have changed, so a 401 answering an older key is ignored.
+    @ObservationIgnored private var keyGeneration = 0
 
     public init(store: any TimerStore, now: @escaping @Sendable () -> Date = Date.init) {
         self.store = store
@@ -87,31 +92,36 @@ public enum TimerEngineError: Error, Equatable {
     }
 
     public func disableNow(aliasID: Int) async throws {
-        let aliasSwitch = AliasSwitch(api: try signedInAPI())
-        guard claimDisable(of: aliasID) else { return }
-        defer { aliasesBeingDisabled.remove(aliasID) }
-        _ = try await aliasSwitch.ensureDisabled(aliasID: aliasID)
-        try removeRecord(aliasID: aliasID)
+        guard api != nil else { throw TimerEngineError.notSignedIn }
+        if let inFlight = disablesInFlight[aliasID], case .disabled = await outcome(of: inFlight) {
+            return
+        }
+        switch await disable(aliasID: aliasID) {
+        case .disabled: return
+        case .unauthorized: throw APIError.unauthorized
+        case .cancelled: throw CancellationError()
+        case .failed(let error): throw error
+        }
     }
 
     public func processDue() async -> [TimerEvent] {
-        guard let api else { return [] }
-        let aliasSwitch = AliasSwitch(api: api)
         var events: [TimerEvent] = []
         for aliasID in records.filter(isDue).map(\.aliasID) {
-            guard let record = record(for: aliasID), isDue(record), claimDisable(of: aliasID) else { continue }
-            defer { aliasesBeingDisabled.remove(aliasID) }
-            do {
-                _ = try await aliasSwitch.ensureDisabled(aliasID: aliasID)
-                try? removeRecord(aliasID: aliasID)
+            guard api != nil else { break }
+            guard let record = record(for: aliasID), isDue(record), disablesInFlight[aliasID] == nil else { continue }
+            switch await disable(aliasID: aliasID) {
+            case .disabled:
                 events.append(.disabled(aliasID: aliasID, email: record.email))
-            } catch APIError.unauthorized {
-                markAllUnauthorized()
-                events.append(.unauthorized)
-                break
-            } catch where Self.isCancellation(error) {
-                break
-            } catch {
+            case .unauthorized(let generation):
+                guard generation == keyGeneration else { continue }
+                if markAllUnauthorized() {
+                    events.append(.unauthorized)
+                }
+                return events
+            case .cancelled:
+                return events
+            case .failed:
+                if Task.isCancelled { return events }
                 if registerTransientFailure(aliasID: aliasID) {
                     events.append(.disableKeepsFailing(aliasID: aliasID, email: record.email))
                 }
@@ -124,33 +134,30 @@ public enum TimerEngineError: Error, Equatable {
         records.compactMap { record -> Date? in
             switch failures[record.aliasID] {
             case .unauthorized: nil
-            case .transient(_, _, let nextRetryAt, _): nextRetryAt
+            case .transient(_, _, let nextRetryAt, _): max(nextRetryAt, record.expiresAt)
             case nil: record.expiresAt
             }
         }.min()
     }
 
     public func resumeAfterKeyChange() {
+        keyGeneration += 1
         failures = failures.filter { $0.value != .unauthorized }
     }
 
     /// Tries to disable every timed alias once, in parallel. Gives up when the budget runs out;
     /// records of aliases that could not be disabled stay for the next launch.
+    /// Returns false when the timer file was unreadable, because aliases it lists may still be enabled.
     public func disableAll(within budget: Duration) async -> Bool {
-        guard let api else { return records.isEmpty }
-        let aliasSwitch = AliasSwitch(api: api)
-        let claimedAliasIDs = records.map(\.aliasID).filter(claimDisable)
-        defer { aliasesBeingDisabled.subtract(claimedAliasIDs) }
+        guard loadError == nil else { return false }
+        guard api != nil else { return records.isEmpty }
+        let aliasIDs = records.map(\.aliasID)
 
-        await withTaskGroup(of: DisableAttempt.self) { group in
-            for aliasID in claimedAliasIDs {
+        await withTaskGroup(of: GroupResult.self) { group in
+            for aliasID in aliasIDs {
                 group.addTask {
-                    do {
-                        _ = try await aliasSwitch.ensureDisabled(aliasID: aliasID)
-                        return .disabled(aliasID: aliasID)
-                    } catch {
-                        return .failed
-                    }
+                    _ = await self.disable(aliasID: aliasID)
+                    return .attemptFinished
                 }
             }
             group.addTask {
@@ -158,21 +165,76 @@ public enum TimerEngineError: Error, Equatable {
                 return .budgetExhausted
             }
 
-            var pendingAttempts = claimedAliasIDs.count
-            while pendingAttempts > 0, let attempt = await group.next() {
-                switch attempt {
-                case .disabled(let aliasID):
-                    try? removeRecord(aliasID: aliasID)
-                    pendingAttempts -= 1
-                case .failed:
-                    pendingAttempts -= 1
-                case .budgetExhausted:
-                    pendingAttempts = 0
+            var pendingAttempts = aliasIDs.count
+            while pendingAttempts > 0, let result = await group.next() {
+                switch result {
+                case .attemptFinished: pendingAttempts -= 1
+                case .budgetExhausted: pendingAttempts = 0
                 }
             }
             group.cancelAll()
         }
         return records.isEmpty
+    }
+
+    /// Joins the alias's in-flight attempt, or starts one. A successful attempt drops the record.
+    private func disable(aliasID: Int) async -> DisableOutcome {
+        await outcome(of: disablesInFlight[aliasID] ?? startDisable(aliasID: aliasID))
+    }
+
+    private func outcome(of attempt: Task<DisableOutcome, Never>) async -> DisableOutcome {
+        await withTaskCancellationHandler {
+            await attempt.value
+        } onCancel: {
+            attempt.cancel()
+        }
+    }
+
+    private func startDisable(aliasID: Int) -> Task<DisableOutcome, Never> {
+        guard let api else {
+            return Task { .failed(TimerEngineError.notSignedIn) }
+        }
+        let aliasSwitch = AliasSwitch(api: api)
+        let generation = keyGeneration
+        let attempt = Task {
+            let outcome = await Self.attemptDisable(aliasID: aliasID, using: aliasSwitch, keyGeneration: generation)
+            disablesInFlight[aliasID] = nil
+            if case .disabled = outcome {
+                try? removeRecord(aliasID: aliasID)
+            }
+            return outcome
+        }
+        disablesInFlight[aliasID] = attempt
+        return attempt
+    }
+
+    nonisolated private static func attemptDisable(
+        aliasID: Int,
+        using aliasSwitch: AliasSwitch,
+        keyGeneration: Int
+    ) async -> DisableOutcome {
+        do {
+            _ = try await aliasSwitch.ensureDisabled(aliasID: aliasID)
+            return .disabled
+        } catch where isCancellation(error) {
+            return .cancelled
+        } catch APIError.unauthorized {
+            return .unauthorized(generation: keyGeneration)
+        } catch where isAliasGone(error) {
+            return .disabled
+        } catch {
+            return .failed(error)
+        }
+    }
+
+    /// SimpleLogin answers 404, 403 (someone else's alias), or 400 "Unknown error" for aliases that don't exist.
+    nonisolated private static func isAliasGone(_ error: any Error) -> Bool {
+        switch error as? APIError {
+        case .server(status: 404, _), .server(status: 403, _), .server(status: 400, message: "Unknown error"):
+            true
+        default:
+            false
+        }
     }
 
     private func isDue(_ record: TimerRecord) -> Bool {
@@ -185,20 +247,20 @@ public enum TimerEngineError: Error, Equatable {
         }
     }
 
-    private func claimDisable(of aliasID: Int) -> Bool {
-        aliasesBeingDisabled.insert(aliasID).inserted
-    }
-
-    private func markAllUnauthorized() {
+    /// Returns whether the key just became invalid, as opposed to already being known as invalid.
+    private func markAllUnauthorized() -> Bool {
+        let wasAlreadyUnauthorized = failures.values.contains(.unauthorized)
         for record in records {
             failures[record.aliasID] = .unauthorized
         }
+        return !wasAlreadyUnauthorized
     }
 
     /// Returns whether the failure has now lasted long enough to be reported, which happens once.
+    /// A record extended while the attempt was running is no longer due, so its failure is discarded.
     private func registerTransientFailure(aliasID: Int) -> Bool {
-        guard record(for: aliasID) != nil else { return false }
         let failedAt = now()
+        guard let record = record(for: aliasID), record.expiresAt <= failedAt else { return false }
         var firstFailedAt = failedAt
         var attempts = 1
         var reported = false
@@ -218,7 +280,7 @@ public enum TimerEngineError: Error, Equatable {
         return shouldReport
     }
 
-    private static func isCancellation(_ error: any Error) -> Bool {
+    nonisolated private static func isCancellation(_ error: any Error) -> Bool {
         Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
@@ -261,8 +323,14 @@ public enum TimerEngineError: Error, Equatable {
     }
 }
 
-private enum DisableAttempt: Sendable {
-    case disabled(aliasID: Int)
-    case failed
+private enum DisableOutcome: Sendable {
+    case disabled
+    case unauthorized(generation: Int)
+    case cancelled
+    case failed(any Error)
+}
+
+private enum GroupResult: Sendable {
+    case attemptFinished
     case budgetExhausted
 }

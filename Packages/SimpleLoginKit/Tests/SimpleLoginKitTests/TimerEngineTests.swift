@@ -37,6 +37,20 @@ final class TestClock: @unchecked Sendable {
         return engine
     }
 
+    private func makeEngineWithGatedAPI() async throws -> (TimerEngine, GatedAliasAPI) {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        let gated = GatedAliasAPI(base: api)
+        engine.api = gated
+        return (engine, gated)
+    }
+
+    private func yieldRepeatedly() async {
+        for _ in 0..<20 {
+            await Task.yield()
+        }
+    }
+
     // MARK: - Enabling and extending
 
     @Test func enableCreatesRecordWithExpiry() async throws {
@@ -462,6 +476,192 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.records.isEmpty)
     }
 
+    @Test func overlappingUnauthorizedResponsesReportInvalidKeyOnce() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        let gated = GatedAliasAPI(base: api)
+        engine.api = gated
+        api.errors = [APIError.unauthorized, APIError.unauthorized]
+        clock.advance(by: 300)
+
+        async let first = engine.processDue()
+        await gated.waitUntilHolding(1)
+        async let second = engine.processDue()
+        await gated.waitUntilHolding(2)
+        gated.open()
+
+        #expect(await first + second == [.unauthorized])
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+    }
+
+    @Test func unauthorizedFromReplacedKeyIsIgnored() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        api.errors = [APIError.unauthorized]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        engine.api = api
+        gated.open()
+
+        #expect(await events.isEmpty)
+        #expect(engine.failures.isEmpty)
+        #expect(await engine.processDue() == [.disabled(aliasID: 1, email: "one@example.com")])
+    }
+
+    @Test func unauthorizedFromBeforeKeyChangeIsIgnored() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        api.errors = [APIError.unauthorized]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        engine.resumeAfterKeyChange()
+        gated.open()
+
+        #expect(await events.isEmpty)
+        #expect(engine.failures.isEmpty)
+        #expect(await engine.processDue() == [.disabled(aliasID: 1, email: "one@example.com")])
+    }
+
+    // MARK: - Aliases that no longer exist
+
+    @Test(arguments: [
+        APIError.server(status: 404, message: nil),
+        APIError.server(status: 403, message: "Forbidden"),
+        APIError.server(status: 400, message: "Unknown error"),
+    ])
+    func processDueDropsRecordOfAliasThatIsGone(error: APIError) async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [error]
+        clock.advance(by: 300)
+
+        #expect(await engine.processDue() == [.disabled(aliasID: 1, email: "one@example.com")])
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+        #expect(engine.failures.isEmpty)
+    }
+
+    @Test(arguments: [
+        APIError.server(status: 400, message: "Invalid request"),
+        APIError.server(status: 500, message: nil),
+    ])
+    func processDueRetriesOtherServerErrors(error: APIError) async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [error]
+        clock.advance(by: 300)
+
+        #expect(await engine.processDue().isEmpty)
+        #expect(engine.record(for: 1) != nil)
+        #expect(engine.failures[1] == .transient(
+            firstFailedAt: t0.addingTimeInterval(300),
+            attempts: 1,
+            nextRetryAt: t0.addingTimeInterval(305),
+            reported: false
+        ))
+    }
+
+    @Test func disableNowTreatsGoneAliasAsDisabled() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.server(status: 404, message: nil)]
+
+        try await engine.disableNow(aliasID: 1)
+
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+    }
+
+    @Test func disableAllTreatsGoneAliasAsDisabled() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.server(status: 403, message: nil)]
+
+        #expect(await engine.disableAll(within: .seconds(5)))
+        #expect(engine.records.isEmpty)
+    }
+
+    // MARK: - Operations overlapping an in-flight disable
+
+    @Test func extendDuringFailingDisableDiscardsTheFailure() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        api.errors = [APIError.transport("offline")]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        try engine.extend(aliasID: 1, by: .fiveMinutes)
+        gated.open()
+
+        #expect(await events.isEmpty)
+        #expect(engine.failures[1] == nil)
+        #expect(engine.nextDueDate() == t0.addingTimeInterval(600))
+
+        api.errors = [APIError.transport("offline")]
+        clock.advance(by: 300)
+        #expect(await engine.processDue().isEmpty)
+        #expect(engine.failures[1] == .transient(
+            firstFailedAt: t0.addingTimeInterval(600),
+            attempts: 1,
+            nextRetryAt: t0.addingTimeInterval(605),
+            reported: false
+        ))
+    }
+
+    @Test func disableNowWaitsForInFlightDisable() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        let manualDisable = TrackedTask { try await engine.disableNow(aliasID: 1) }
+        await yieldRepeatedly()
+        #expect(!manualDisable.isFinished)
+        gated.open()
+
+        try await manualDisable.value
+        #expect(engine.record(for: 1) == nil)
+        #expect(await events == [.disabled(aliasID: 1, email: "one@example.com")])
+        #expect(api.toggleCalls == [1, 1])
+    }
+
+    @Test func disableNowRetriesWhenInFlightDisableFails() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        api.errors = [APIError.transport("offline")]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        let manualDisable = TrackedTask { try await engine.disableNow(aliasID: 1) }
+        await yieldRepeatedly()
+        gated.open()
+
+        try await manualDisable.value
+        _ = await events
+        #expect(engine.records.isEmpty)
+        #expect(engine.failures.isEmpty)
+        #expect(api.aliases[1]?.enabled == false)
+    }
+
+    @Test func disableAllWaitsForInFlightDisable() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        let quit = TrackedTask { await engine.disableAll(within: .seconds(5)) }
+        await yieldRepeatedly()
+        #expect(!quit.isFinished)
+        gated.open()
+
+        #expect(try await quit.value)
+        #expect(await events == [.disabled(aliasID: 1, email: "one@example.com")])
+        #expect(engine.records.isEmpty)
+    }
+
     // MARK: - Disabling everything (quit, sign-out)
 
     @Test func disableAllDisablesEverythingWithinBudget() async throws {
@@ -522,6 +722,12 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.records.count == 1)
     }
 
+    @Test func disableAllReportsFailureWhenTimerFileIsUnreadable() async {
+        let engine = makeEngine(store: InMemoryTimerStore(failLoad: true))
+
+        #expect(await engine.disableAll(within: .seconds(5)) == false)
+    }
+
     // MARK: - Signed out
 
     @Test func operationsWithoutAPIThrowNotSignedIn() async throws {
@@ -535,6 +741,23 @@ final class TestClock: @unchecked Sendable {
         }
         #expect(engine.records.isEmpty)
         #expect(store.records.isEmpty)
+    }
+}
+
+/// A main-actor task that remembers whether its operation has returned.
+@MainActor private final class TrackedTask<Success: Sendable> {
+    private(set) var isFinished = false
+    private var task: Task<Success, any Error>!
+
+    init(_ operation: @escaping @MainActor () async throws -> Success) {
+        task = Task { [weak self] in
+            defer { self?.isFinished = true }
+            return try await operation()
+        }
+    }
+
+    var value: Success {
+        get async throws { try await task.value }
     }
 }
 
