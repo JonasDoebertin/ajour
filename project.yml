@@ -1,4 +1,4 @@
-name: SimpleLoginMac
+name: Ajour
 options:
   deploymentTarget:
     macOS: "26.0"
@@ -13,45 +13,45 @@ settings:
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
 targets:
-  SimpleLoginMac:
+  Ajour:
     type: application
     platform: macOS
     sources:
-      - SimpleLoginMac
+      - Ajour
     dependencies:
       - package: SimpleLoginKit
     info:
-      path: SimpleLoginMac/Info.plist
+      path: Ajour/Info.plist
       properties:
-        CFBundleDisplayName: SimpleLogin for macOS
+        CFBundleDisplayName: Ajour
         LSUIElement: true
     entitlements:
-      path: SimpleLoginMac/SimpleLoginMac.entitlements
+      path: Ajour/Ajour.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
     settings:
       base:
-        PRODUCT_NAME: SimpleLoginMac
-        PRODUCT_BUNDLE_IDENTIFIER: de.doebertin.simplelogin-macos
+        PRODUCT_NAME: Ajour
+        PRODUCT_BUNDLE_IDENTIFIER: de.dieserjonas.ajour
         ENABLE_HARDENED_RUNTIME: YES
-  SimpleLoginMacTests:
+  AjourTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - SimpleLoginMacTests
+      - AjourTests
     dependencies:
-      - target: SimpleLoginMac
+      - target: Ajour
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: de.doebertin.simplelogin-macos.tests
+        PRODUCT_BUNDLE_IDENTIFIER: de.dieserjonas.ajour.tests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
-  SimpleLoginMac:
+  Ajour:
     build:
       targets:
-        SimpleLoginMac: all
-        SimpleLoginMacTests: [test]
+        Ajour: all
+        AjourTests: [test]
     test:
       targets:
-        - SimpleLoginMacTests
+        - AjourTests

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 /// The menu's alias actions: enabling for a while, extending, disabling, and copying.
 @MainActor

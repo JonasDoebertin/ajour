@@ -44,7 +44,7 @@ struct OnboardingView: View {
 
     private var explanation: some View {
         Group {
-            Text("Welcome to SimpleLogin for macOS")
+            Text("Welcome to Ajour")
                 .font(.title2.bold())
             Text("The app needs a SimpleLogin API key to enable and disable your aliases. It never sees your password.")
             HStack {
@@ -101,7 +101,7 @@ struct OnboardingView: View {
         Group {
             Text("You’re All Set")
                 .font(.title2.bold())
-            Text("SimpleLogin for macOS lives in the menu bar.")
+            Text("Ajour lives in the menu bar.")
             Toggle("Launch at login", isOn: $launchAtLogin)
                 .toggleStyle(.checkbox)
                 .disabled(model.isFinishing || model.isComplete)

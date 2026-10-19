@@ -79,7 +79,7 @@ struct TimerStoreTests {
         let url = try FileTimerStore.defaultURL()
 
         #expect(url.lastPathComponent == "timers.json")
-        #expect(url.deletingLastPathComponent().lastPathComponent == "de.doebertin.simplelogin-macos")
+        #expect(url.deletingLastPathComponent().lastPathComponent == "de.dieserjonas.ajour")
         #expect(url.path.contains("Application Support"))
     }
 

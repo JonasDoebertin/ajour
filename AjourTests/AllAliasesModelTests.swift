@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 /// The "All Aliases" window: paging, searching, row states, and row actions.
 @MainActor

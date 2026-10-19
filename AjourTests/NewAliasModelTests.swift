@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 /// The "New Alias" window: offering suffixes, choosing the mailbox, and creating a custom alias.
 @MainActor

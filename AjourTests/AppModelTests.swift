@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 @MainActor
 struct AppModelTests {

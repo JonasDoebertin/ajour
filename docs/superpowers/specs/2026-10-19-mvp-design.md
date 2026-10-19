@@ -1,4 +1,4 @@
-# SimpleLogin for macOS: MVP Design
+# Ajour: MVP Design
 
 Status: draft, awaiting approval
 Date: 2026-10-19
@@ -160,11 +160,11 @@ Quit
 - Timer records stored as a small JSON file in Application Support.
 - Core logic (API client, timer/expiry logic, activity detection) is testable without UI: injectable clock and HTTP layer, tests with Swift Testing.
 - Signing with Jonas's Apple Development team for local use; no notarization for now.
+- Name: **Ajour**, bundle identifier `de.dieserjonas.ajour`. The SimpleLogin name only appears descriptively ("Quick aliases for SimpleLogin"), never as the app name or in the icon, and the app states that it is not affiliated with SimpleLogin or Proton AG. Proton publishes its own "SimpleLogin for Safari", so "SimpleLogin for …" would read as an official product.
 
 ## Left to the builder
 
 - Project layout (single app target vs. app + local Swift package).
-- App name and bundle identifier (working name "SimpleLogin for macOS").
 - Exact icons, copy, and window layouts, within the structure above.
 - Polling interval tuning and backoff details, within the behavior above.
 - Heuristic for "clipboard looks like an API key".

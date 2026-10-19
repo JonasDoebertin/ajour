@@ -15,7 +15,7 @@ public struct KeychainAPIKeyStore: APIKeyStoring {
     private let service: String
     private let account: String
 
-    public init(service: String = "de.doebertin.simplelogin-macos", account: String = "api-key") {
+    public init(service: String = "de.dieserjonas.ajour", account: String = "api-key") {
         self.service = service
         self.account = account
     }

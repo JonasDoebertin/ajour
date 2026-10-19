@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import UserNotifications
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 struct NotificationContentFactoryTests {
     let arrival = MailArrival(

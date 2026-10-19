@@ -1,5 +1,5 @@
 import Testing
-@testable import SimpleLoginMac
+@testable import Ajour
 
 struct TransportConfigurationTests {
     @Test func requestsGiveUpAfter15SecondsWithoutAResponse() {

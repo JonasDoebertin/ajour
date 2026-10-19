@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     private let lock = NSLock()

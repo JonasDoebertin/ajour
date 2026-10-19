@@ -10,7 +10,7 @@ public enum TimerStoreError: Error, Equatable {
 }
 
 public struct FileTimerStore: TimerStore {
-    private static let bundleIdentifier = "de.doebertin.simplelogin-macos"
+    private static let bundleIdentifier = "de.dieserjonas.ajour"
     private static let fileName = "timers.json"
 
     private let fileURL: URL

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 @MainActor
 struct SettingsModelTests {

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SimpleLoginKit
-@testable import SimpleLoginMac
+@testable import Ajour
 
 /// Creating random and custom aliases: copying, announcing, and timing them.
 @MainActor

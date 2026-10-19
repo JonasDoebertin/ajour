@@ -12,7 +12,7 @@ enum KeychainAccessCheck {
     }
 
     static func run() -> Never {
-        let store = KeychainAPIKeyStore(service: "de.doebertin.simplelogin-macos.keychain-check", account: "check")
+        let store = KeychainAPIKeyStore(service: "de.dieserjonas.ajour.keychain-check", account: "check")
         let value = UUID().uuidString
         do {
             try store.save(value)

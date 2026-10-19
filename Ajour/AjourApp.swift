@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SimpleLoginMacApp: App {
+struct AjourApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     private var model: AppModel { appDelegate.model }
