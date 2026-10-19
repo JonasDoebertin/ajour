@@ -135,7 +135,7 @@ import SimpleLoginKit
     }
 
     func keepEnabled(_ alias: Alias) async {
-        await appModel.keepEnabled(aliasID: alias.id)
+        await appModel.keepEnabled(aliasID: alias.id, email: alias.email)
     }
 
     func disable(_ alias: Alias) async {

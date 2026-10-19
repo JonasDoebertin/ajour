@@ -24,6 +24,10 @@ enum AliasCreationError: Error, Equatable {
     case stillEnabledAfterAccountChange(email: String)
 }
 
+enum AliasActionError: Error, Equatable {
+    case timerAlreadyEnded(email: String)
+}
+
 @MainActor @Observable final class AppModel {
     enum Phase: Equatable {
         case loading, signedOut, signedIn(UserInfo?)
@@ -237,11 +241,16 @@ enum AliasCreationError: Error, Equatable {
         }
     }
 
-    /// Stops the alias's timer and leaves the alias enabled.
+    /// Stops the alias's timer and leaves the alias enabled. A timer that already ended has disabled the alias.
     @discardableResult
-    func keepEnabled(aliasID: Int) async -> Bool {
+    func keepEnabled(aliasID: Int, email: String) async -> Bool {
         await perform(on: aliasID) {
-            try engine.cancelTimer(aliasID: aliasID)
+            do {
+                try engine.cancelTimer(aliasID: aliasID)
+            } catch TimerEngineError.noTimer {
+                recordEnabled(false, aliasID: aliasID)
+                throw AliasActionError.timerAlreadyEnded(email: email)
+            }
             recordEnabled(true, aliasID: aliasID)
         }
     }
@@ -457,6 +466,8 @@ enum AliasCreationError: Error, Equatable {
             "\(email) was created for the previous account and has been disabled."
         case AliasCreationError.stillEnabledAfterAccountChange(let email):
             "\(email) was created for the previous account and could not be disabled."
+        case AliasActionError.timerAlreadyEnded(let email):
+            "\(email) was already disabled."
         case TimerEngineError.notSignedIn:
             "Not signed in. Set up your API key first."
         case TimerEngineError.disableInProgress:

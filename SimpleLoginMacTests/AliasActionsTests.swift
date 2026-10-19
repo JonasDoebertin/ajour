@@ -347,7 +347,7 @@ struct AliasActionsTests {
         let test = AliasActionsTests(records: [runningRecord(aliasID: 7)])
         let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
 
-        let succeeded = await model.keepEnabled(aliasID: 7)
+        let succeeded = await model.keepEnabled(aliasID: 7, email: "shop@example.com")
 
         #expect(succeeded)
         #expect(model.engine.record(for: 7) == nil)
@@ -356,11 +356,22 @@ struct AliasActionsTests {
         #expect(model.lastError == nil)
     }
 
+    @Test func keepEnabledAfterTheTimerEndedShowsTheAliasAsDisabled() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+
+        let succeeded = await model.keepEnabled(aliasID: 7, email: "shop@example.com")
+
+        #expect(succeeded == false)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+        #expect(model.menuSections.pinned.first?.state == .disabled)
+        #expect(model.lastError == "shop@example.com was already disabled.")
+    }
+
     @Test func keepEnabledWithUnreadableTimerDataShowsWhy() async throws {
         let test = AliasActionsTests(timerStore: UnavailableTimerStore(reason: "test"))
         let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7)])
 
-        let succeeded = await model.keepEnabled(aliasID: 7)
+        let succeeded = await model.keepEnabled(aliasID: 7, email: "shop@example.com")
 
         #expect(succeeded == false)
         #expect(model.lastError == "Timer data is unreadable, so timers can't be started or changed.")
@@ -376,7 +387,7 @@ struct AliasActionsTests {
         let expiry = Task { await model.tick() }
         await test.transport.waitUntilARequestIsHeld()
 
-        let succeeded = await model.keepEnabled(aliasID: 7)
+        let succeeded = await model.keepEnabled(aliasID: 7, email: "shop@example.com")
         test.transport.release()
         await expiry.value
 

@@ -204,13 +204,26 @@ final class TestClock: @unchecked Sendable {
         #expect(await events == [.disabled(aliasID: 1, email: "one@example.com")])
     }
 
-    @Test func cancelTimerWithoutATimerChangesNothing() throws {
+    @Test func cancelTimerWithoutATimerReportsThatThereIsNone() throws {
         let engine = makeEngine()
 
-        try engine.cancelTimer(aliasID: 1)
+        #expect(throws: TimerEngineError.noTimer) {
+            try engine.cancelTimer(aliasID: 1)
+        }
 
         #expect(engine.records.isEmpty)
         #expect(api.toggleCalls.isEmpty)
+    }
+
+    @Test func cancelTimerAfterTheTimerEndedReportsThatThereIsNone() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+
+        #expect(throws: TimerEngineError.noTimer) {
+            try engine.cancelTimer(aliasID: 1)
+        }
     }
 
     // MARK: - Persistence
