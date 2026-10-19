@@ -1,0 +1,57 @@
+name: Ajour
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  SimpleLoginKit:
+    path: Packages/SimpleLoginKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+targets:
+  Ajour:
+    type: application
+    platform: macOS
+    sources:
+      - Ajour
+    dependencies:
+      - package: SimpleLoginKit
+    info:
+      path: Ajour/Info.plist
+      properties:
+        CFBundleDisplayName: Ajour
+        LSUIElement: true
+    entitlements:
+      path: Ajour/Ajour.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_NAME: Ajour
+        PRODUCT_BUNDLE_IDENTIFIER: de.dieserjonas.ajour
+        ENABLE_HARDENED_RUNTIME: YES
+  AjourTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - AjourTests
+    dependencies:
+      - target: Ajour
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.dieserjonas.ajour.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Ajour:
+    build:
+      targets:
+        Ajour: all
+        AjourTests: [test]
+    test:
+      targets:
+        - AjourTests

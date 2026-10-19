@@ -1,0 +1,166 @@
+import Foundation
+import Observation
+import SimpleLoginKit
+
+/// Lists every alias of the account page by page, optionally filtered by a search, and acts on single rows.
+@MainActor @Observable final class AllAliasesModel {
+    var searchText = ""
+    private(set) var aliases: [Alias] = []
+    private(set) var isLoading = false
+    private(set) var errorMessage: String?
+    /// False until the current list's first page has answered, so it isn't called empty before.
+    private var hasLoadedFirstPage = false
+    private var query = ""
+    private var nextPage = 0
+    private var hasMorePages = true
+    /// The app's enabled changes up to here are already reflected in the loaded rows.
+    private var listStartSequence = 0
+    /// Changes whenever the list starts over, so a page that arrives for an older list is dropped.
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var pendingSearch: Task<Void, Never>?
+
+    @ObservationIgnored private let appModel: AppModel
+    @ObservationIgnored private let sleep: @MainActor (Duration) async throws -> Void
+
+    private static let searchDelay: Duration = .milliseconds(300)
+    private static let pageSize = 20
+
+    init(appModel: AppModel, sleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        self.appModel = appModel
+        self.sleep = sleep
+    }
+
+    /// Starts the list over for the current search text.
+    func reload() async {
+        pendingSearch?.cancel()
+        await startOver(query: searchText)
+    }
+
+    /// Searches once typing pauses, so not every keystroke sends a request.
+    @discardableResult
+    func scheduleSearch() -> Task<Void, Never> {
+        pendingSearch?.cancel()
+        let query = searchText
+        let search = Task {
+            do {
+                try await sleep(Self.searchDelay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await startOver(query: query)
+        }
+        pendingSearch = search
+        return search
+    }
+
+    /// Called when a row appears; the last row loads the next page.
+    func loadMore(after alias: Alias) async {
+        guard alias.id == aliases.last?.id else { return }
+        await loadNextPage()
+    }
+
+    func loadNextPage() async {
+        guard !isLoading, hasMorePages else { return }
+        guard let api = appModel.api else {
+            errorMessage = AppModel.userMessage(for: TimerEngineError.notSignedIn)
+            return
+        }
+        let generation = self.generation
+        isLoading = true
+        let result: Result<[Alias], any Error>
+        do {
+            result = .success(try await api.aliases(page: nextPage, query: query.isEmpty ? nil : query))
+        } catch {
+            result = .failure(error)
+        }
+        guard generation == self.generation else { return }
+        isLoading = false
+        hasLoadedFirstPage = true
+        switch result {
+        case .success(let page):
+            let listedIDs = Set(aliases.map(\.id))
+            aliases += page.filter { !listedIDs.contains($0.id) }
+            nextPage += 1
+            hasMorePages = page.count == Self.pageSize
+            errorMessage = nil
+        case .failure(let error):
+            errorMessage = AppModel.userMessage(for: error)
+        }
+    }
+
+    /// A running timer, or a change the app made after the row loaded, wins over the row's enabled flag.
+    func state(of alias: Alias) -> AliasMenuState {
+        if let record = appModel.engine.record(for: alias.id) {
+            return .timed(remaining: max(0, record.expiresAt.timeIntervalSince(appModel.now)))
+        }
+        let enabled = appModel.knownEnabled(aliasID: alias.id, since: listStartSequence) ?? alias.enabled
+        return enabled ? .enabled : .disabled
+    }
+
+    func stateLabel(for alias: Alias) -> String {
+        switch state(of: alias) {
+        case .disabled: "Disabled"
+        case .enabled: "Enabled"
+        case .timed(let remaining): "\(RemainingTime.format(remaining)) left"
+        }
+    }
+
+    var showsEmptyState: Bool {
+        hasLoadedFirstPage && aliases.isEmpty && errorMessage == nil
+    }
+
+    func isBusy(_ alias: Alias) -> Bool {
+        appModel.isBusy(aliasID: alias.id)
+    }
+
+    func togglePin(_ alias: Alias) async {
+        let isPinned = !alias.pinned
+        guard await appModel.setPinned(isPinned, alias: alias) else { return }
+        updateRow(aliasID: alias.id) { $0.settingPinned(isPinned) }
+    }
+
+    func copy(_ alias: Alias) {
+        appModel.copy(email: alias.email)
+    }
+
+    /// Enables a disabled alias for a while or extends a running timer.
+    /// Rows show the new state through `state(of:)`, like after any other change the app makes.
+    func enable(_ alias: Alias, for duration: AliasDuration) async {
+        await appModel.enable(aliasID: alias.id, for: duration)
+    }
+
+    func disableAfter(_ alias: Alias, duration: AliasDuration) async {
+        await appModel.disableAfter(aliasID: alias.id, duration: duration)
+    }
+
+    func enablePermanently(_ alias: Alias) async {
+        await appModel.enablePermanently(aliasID: alias.id)
+    }
+
+    func keepEnabled(_ alias: Alias) async {
+        await appModel.keepEnabled(aliasID: alias.id, email: alias.email)
+    }
+
+    func disable(_ alias: Alias) async {
+        await appModel.disableNow(aliasID: alias.id)
+    }
+
+    private func startOver(query: String) async {
+        generation += 1
+        listStartSequence = appModel.enabledChangeSequence
+        hasLoadedFirstPage = false
+        self.query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        aliases = []
+        nextPage = 0
+        hasMorePages = true
+        isLoading = false
+        errorMessage = nil
+        await loadNextPage()
+    }
+
+    private func updateRow(aliasID: Int, _ change: (Alias) -> Alias) {
+        guard let index = aliases.firstIndex(where: { $0.id == aliasID }) else { return }
+        aliases[index] = change(aliases[index])
+    }
+}
