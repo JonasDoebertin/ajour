@@ -111,8 +111,7 @@ private struct AliasMenu: View {
                     disableNowButton
                     ForEach(AliasDuration.allCases, id: \.self) { duration in
                         Button("Disable After \(duration.title)") {
-                            guard let alias = model.pinned.first(where: { $0.id == item.id }) else { return }
-                            model.disableAfter(alias: alias, duration: duration)
+                            Task { await model.disableAfter(aliasID: item.id, duration: duration) }
                         }
                     }
                 }

@@ -124,10 +124,14 @@ import SimpleLoginKit
         appModel.copy(email: alias.email)
     }
 
-    /// Enables a disabled alias for a while, extends a running timer, or times an enabled alias.
+    /// Enables a disabled alias for a while or extends a running timer.
     /// Rows show the new state through `state(of:)`, like after any other change the app makes.
     func enable(_ alias: Alias, for duration: AliasDuration) async {
         await appModel.enable(aliasID: alias.id, for: duration)
+    }
+
+    func disableAfter(_ alias: Alias, duration: AliasDuration) async {
+        await appModel.disableAfter(aliasID: alias.id, duration: duration)
     }
 
     func enablePermanently(_ alias: Alias) async {

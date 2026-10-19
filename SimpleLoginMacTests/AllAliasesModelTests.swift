@@ -361,6 +361,29 @@ final class AllAliasesModelTests {
         #expect(appModel.menuSections.timedUnpinned.map(\.id) == [7])
     }
 
+    @Test func disablingAnEnabledRowLaterShowsItsRemainingTime() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+
+        await model.disableAfter(try #require(model.aliases.first), duration: .fiveMinutes)
+
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+        #expect(model.aliases.map(model.stateLabel) == ["5:00 left"])
+    }
+
+    @Test func disablingARowLaterThatWasDisabledElsewhereNeverEnablesIt() async throws {
+        let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+
+        await model.disableAfter(try #require(model.aliases.first), duration: .fiveMinutes)
+
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+        #expect(appModel.engine.records.isEmpty)
+        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(appModel.lastError == "shop@example.com is already disabled.")
+    }
+
     @Test func enablingARowPermanentlyShowsItAsEnabledWithoutATimer() async throws {
         let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: false)])
         transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))

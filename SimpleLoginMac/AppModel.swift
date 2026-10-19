@@ -25,6 +25,7 @@ enum AliasCreationError: Error, Equatable {
 }
 
 enum AliasActionError: Error, Equatable {
+    case alreadyDisabled(email: String)
     case timerAlreadyEnded(email: String)
 }
 
@@ -196,9 +197,20 @@ enum AliasActionError: Error, Equatable {
         }
     }
 
-    /// Times an already enabled alias, so it is disabled later without changing it now.
-    func disableAfter(alias: Alias, duration: AliasDuration) {
-        perform { _ = try engine.startTimer(for: alias, duration: duration) }
+    /// Times an enabled alias, so it is disabled later without changing it now. The alias is read first, because
+    /// one shown as enabled may have been disabled elsewhere meanwhile; such an alias is never turned on.
+    @discardableResult
+    func disableAfter(aliasID: Int, duration: AliasDuration) async -> Bool {
+        await perform(on: aliasID) {
+            guard let api else { throw TimerEngineError.notSignedIn }
+            let alias = try await api.alias(id: aliasID)
+            guard alias.enabled else {
+                recordEnabled(false, aliasID: aliasID)
+                throw AliasActionError.alreadyDisabled(email: alias.email)
+            }
+            _ = try engine.startTimer(for: alias, duration: duration)
+            recordEnabled(true, aliasID: aliasID)
+        }
     }
 
     /// A random alias uses the account's default domain and mailbox.
@@ -469,6 +481,8 @@ enum AliasActionError: Error, Equatable {
             "\(email) was created for the previous account and has been disabled."
         case AliasCreationError.stillEnabledAfterAccountChange(let email):
             "\(email) was created for the previous account and could not be disabled."
+        case AliasActionError.alreadyDisabled(let email):
+            "\(email) is already disabled."
         case AliasActionError.timerAlreadyEnded(let email):
             "\(email) was already disabled."
         case TimerEngineError.notSignedIn:

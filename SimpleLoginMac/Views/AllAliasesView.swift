@@ -99,7 +99,7 @@ private struct AliasRowActions: View {
             Divider()
             switch model.state(of: alias) {
             case .disabled:
-                durationButtons(title: { "Enable for \($0)" })
+                durationButtons(title: { "Enable for \($0)" }) { await model.enable(alias, for: $0) }
                 Button("Enable Permanently") {
                     Task { await model.enablePermanently(alias) }
                 }
@@ -109,11 +109,11 @@ private struct AliasRowActions: View {
                     Task { await model.keepEnabled(alias) }
                 }
                 Menu("Extend") {
-                    durationButtons(title: { $0 })
+                    durationButtons(title: { $0 }) { await model.enable(alias, for: $0) }
                 }
             case .enabled:
                 disableButton
-                durationButtons(title: { "Disable After \($0)" })
+                durationButtons(title: { "Disable After \($0)" }) { await model.disableAfter(alias, duration: $0) }
             }
         }
         .disabled(model.isBusy(alias))
@@ -125,10 +125,13 @@ private struct AliasRowActions: View {
         }
     }
 
-    private func durationButtons(title: @escaping (String) -> String) -> some View {
+    private func durationButtons(
+        title: @escaping (String) -> String,
+        action: @escaping @MainActor (AliasDuration) async -> Void
+    ) -> some View {
         ForEach(AliasDuration.allCases, id: \.self) { duration in
             Button(title(duration.title)) {
-                Task { await model.enable(alias, for: duration) }
+                Task { await action(duration) }
             }
         }
     }

@@ -213,25 +213,51 @@ struct AliasActionsTests {
         #expect(model.menuSections.pinned.first?.state == .disabled)
     }
 
-    @Test func disableAfterStartsATimerWithoutCallingTheAPI() async throws {
+    @Test func disableAfterTimesAnEnabledAliasWithoutTogglingIt() async throws {
         let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
-        let requestsBefore = transport.requests.count
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
 
-        model.disableAfter(alias: try #require(model.pinned.first), duration: .oneHour)
+        let succeeded = await model.disableAfter(aliasID: 7, duration: .oneHour)
 
         let record = model.engine.record(for: 7)
+        #expect(succeeded)
         #expect(record?.enabledAt == clock.now)
         #expect(record?.expiresAt == clock.now.addingTimeInterval(3600))
-        #expect(transport.requests.count == requestsBefore)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
         #expect(model.menuSections.pinned.first?.state == .timed(remaining: 3600))
         #expect(model.lastError == nil)
+    }
+
+    @Test func disableAfterLeavesAnAliasDisabledElsewhereDisabled() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+
+        let succeeded = await model.disableAfter(aliasID: 7, duration: .oneHour)
+
+        #expect(succeeded == false)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+        #expect(model.engine.record(for: 7) == nil)
+        #expect(model.menuSections.pinned.first?.state == .disabled)
+        #expect(model.lastError == "shop@example.com is already disabled.")
+    }
+
+    @Test func disableAfterShowsWhyTheAliasCouldNotBeChecked() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+
+        let succeeded = await model.disableAfter(aliasID: 7, duration: .oneHour)
+
+        #expect(succeeded == false)
+        #expect(model.engine.record(for: 7) == nil)
+        #expect(model.lastError == "Could not reach SimpleLogin. Check your network connection.")
     }
 
     @Test func disableAfterWithAFailingSaveShowsTheSystemReason() async throws {
         let test = AliasActionsTests(timerStore: InMemoryTimerStore(failsToSave: true))
         let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: true)])
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
 
-        model.disableAfter(alias: try #require(model.pinned.first), duration: .oneHour)
+        await model.disableAfter(aliasID: 7, duration: .oneHour)
 
         #expect(model.lastError == CocoaError(.fileWriteNoPermission).localizedDescription)
     }
