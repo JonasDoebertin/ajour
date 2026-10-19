@@ -17,7 +17,7 @@ public struct SimpleLoginAPI: Sendable {
         try await send("GET", "/api/user_info")
     }
 
-    private func send<T: Decodable>(
+    func send<T: Decodable>(
         _ method: String,
         _ path: String,
         query: [URLQueryItem] = [],
@@ -47,7 +47,7 @@ public struct SimpleLoginAPI: Sendable {
         request.setValue(apiKey, forHTTPHeaderField: "Authentication")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try Self.makeEncoder().encode(body)
         }
         return request
     }
@@ -72,6 +72,12 @@ public struct SimpleLoginAPI: Sendable {
             let message = try? Self.makeDecoder().decode(ErrorBody.self, from: data).error
             throw APIError.server(status: response.statusCode, message: message)
         }
+    }
+
+    private static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        return encoder
     }
 
     private static func makeDecoder() -> JSONDecoder {
