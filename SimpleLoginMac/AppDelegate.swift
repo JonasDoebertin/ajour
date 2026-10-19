@@ -18,7 +18,7 @@ import SimpleLoginKit
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard model.engine.hasActiveTimers else { return .terminateNow }
         Task {
-            _ = await model.engine.disableAll(within: AppModel.disableBudget)
+            await model.prepareForTermination()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -4,6 +4,7 @@ import SimpleLoginKit
 
 enum SignOutError: Error, Equatable {
     case aliasesStillEnabled(count: Int)
+    case timerDataUnreadable
 }
 
 @MainActor @Observable final class AppModel {
@@ -23,18 +24,21 @@ enum SignOutError: Error, Equatable {
     @ObservationIgnored private let transport: any HTTPTransport
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private var lastActivityPollAt: Date?
+    /// Changes whenever the API key changes or is removed.
+    @ObservationIgnored private var session = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
-    @ObservationIgnored private var runningTick: Task<Void, Never>?
+    @ObservationIgnored private var dueProcessing: Task<Void, Never>?
+    @ObservationIgnored private var activityPoll: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
 
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
-    static let disableBudget: Duration = .seconds(5)
+    private static let disableBudget: Duration = .seconds(5)
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
         timerStore: any TimerStore,
-        transport: any HTTPTransport = URLSessionTransport(),
+        transport: any HTTPTransport = URLSessionTransport(session: URLSession(configuration: sessionConfiguration())),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.keyStore = keyStore
@@ -42,6 +46,14 @@ enum SignOutError: Error, Equatable {
         currentDate = now
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now)
+    }
+
+    /// A request on a dead connection, for example right after wake, gives up after 15 seconds instead of
+    /// URLSession's default 60. Polls then stay on schedule, and failed disables reach their retry sooner.
+    nonisolated static func sessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        return configuration
     }
 
     func start() {
@@ -68,6 +80,7 @@ enum SignOutError: Error, Equatable {
 
     /// Timed aliases are disabled first: without the key, nothing could disable them later.
     func signOut() async throws {
+        guard engine.loadError == nil else { throw SignOutError.timerDataUnreadable }
         guard await engine.disableAll(within: Self.disableBudget) else {
             throw SignOutError.aliasesStillEnabled(count: engine.records.count)
         }
@@ -78,8 +91,10 @@ enum SignOutError: Error, Equatable {
     }
 
     /// Replaces the list only once every page has loaded, so a failure keeps the last complete list.
+    /// A result that arrives after sign-out or a key change belongs to the old session and is dropped.
     func refreshPinned() async {
         guard let api else { return }
+        let session = self.session
         var loaded: [Alias] = []
         var page = 0
         do {
@@ -92,21 +107,60 @@ enum SignOutError: Error, Equatable {
         } catch {
             return
         }
+        guard session == self.session else { return }
         pinned = loaded
     }
 
+    /// Stops ticking so no poll or event fires during shutdown, then tries to disable timed aliases within
+    /// the budget. Records of aliases that stay enabled remain on disk for the next launch.
+    func prepareForTermination() async {
+        tickLoop?.cancel()
+        dueProcessing?.cancel()
+        activityPoll?.cancel()
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+            self.wakeObserver = nil
+        }
+        _ = await engine.disableAll(within: Self.disableBudget)
+    }
+
     /// Disables aliases whose timers are due and, every 15 seconds while timers run, checks them for new mail.
+    /// Waits only for the work this call started.
     func tick() async {
+        for work in scheduleTick() {
+            await work.value
+        }
+    }
+
+    /// Entry point for the tick loop and wake. Expiry processing and activity polling each run at most once
+    /// at a time and independently, so a slow poll never holds back a due disable.
+    @discardableResult
+    func scheduleTick() -> [Task<Void, Never>] {
         now = currentDate()
-        if let dueDate = engine.nextDueDate(), dueDate <= now {
+        return [startDueProcessingIfNeeded(), startActivityPollIfNeeded()].compactMap { $0 }
+    }
+
+    private func startDueProcessingIfNeeded() -> Task<Void, Never>? {
+        guard dueProcessing == nil, let dueDate = engine.nextDueDate(), dueDate <= now else { return nil }
+        let work = Task {
             let events = await engine.processDue()
-            if !events.isEmpty { onTimerEvents(events) }
+            dueProcessing = nil
+            if !events.isEmpty, !Task.isCancelled { onTimerEvents(events) }
         }
-        if engine.hasActiveTimers, isActivityPollDue {
-            lastActivityPollAt = now
+        dueProcessing = work
+        return work
+    }
+
+    private func startActivityPollIfNeeded() -> Task<Void, Never>? {
+        guard activityPoll == nil, engine.hasActiveTimers, isActivityPollDue else { return nil }
+        lastActivityPollAt = now
+        let work = Task {
             let arrivals = await engine.pollActivity()
-            if !arrivals.isEmpty { onMailArrivals(arrivals) }
+            activityPoll = nil
+            if !arrivals.isEmpty, !Task.isCancelled { onMailArrivals(arrivals) }
         }
+        activityPoll = work
+        return work
     }
 
     private func startTickLoop() {
@@ -131,22 +185,13 @@ enum SignOutError: Error, Equatable {
         }
     }
 
-    /// Keeps the clock moving while a tick waits on the network, without stacking up ticks behind it.
-    private func scheduleTick() {
-        now = currentDate()
-        guard runningTick == nil else { return }
-        runningTick = Task {
-            await tick()
-            runningTick = nil
-        }
-    }
-
     private var isActivityPollDue: Bool {
         guard let lastActivityPollAt else { return true }
         return now.timeIntervalSince(lastActivityPollAt) >= Self.activityPollInterval
     }
 
     private func connect(_ api: SimpleLoginAPI?) {
+        session += 1
         self.api = api
         engine.api = api
     }

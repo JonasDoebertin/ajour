@@ -21,10 +21,18 @@ struct AppModelTests {
     }
 
     func signedInModel() async throws -> AppModel {
-        transport.enqueue(json: Fixtures.userInfoJSON)
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         let model = makeModel()
         _ = try await model.signIn(apiKey: "valid-key")
         return model
+    }
+
+    /// Gives background work a bounded time to reach the expected state.
+    func waitUntil(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !condition(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     func requestCount(path: String) -> Int {
@@ -63,7 +71,7 @@ struct AppModelTests {
     }
 
     @Test func signInValidatesTheKeyAndSavesIt() async throws {
-        transport.enqueue(json: Fixtures.userInfoJSON)
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         let model = makeModel()
         model.start()
 
@@ -78,7 +86,7 @@ struct AppModelTests {
     }
 
     @Test func signInWithRejectedKeyDoesNotSaveIt() async {
-        transport.enqueue(status: 401, json: #"{"error":"Wrong api key"}"#)
+        transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
         let model = makeModel()
         model.start()
 
@@ -104,8 +112,9 @@ struct AppModelTests {
     @Test func tickDisablesDueAliasesAndForwardsTheEvents() async throws {
         let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7, enabled: true))
-        test.transport.enqueue(json: Fixtures.toggleJSON(enabled: false))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
         var forwardedEvents: [[TimerEvent]] = []
         model.onTimerEvents = { forwardedEvents.append($0) }
 
@@ -118,7 +127,7 @@ struct AppModelTests {
     @Test func tickWithoutDueAliasesForwardsNoEvents() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7))
         var forwardedEvents: [[TimerEvent]] = []
         model.onTimerEvents = { forwardedEvents.append($0) }
 
@@ -132,7 +141,7 @@ struct AppModelTests {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
         let forwardedAt = test.clock.now.addingTimeInterval(-5)
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7, forwardedAt: forwardedAt))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, forwardedAt: forwardedAt))
         var forwardedArrivals: [[MailArrival]] = []
         model.onMailArrivals = { forwardedArrivals.append($0) }
 
@@ -145,8 +154,8 @@ struct AppModelTests {
     @Test func tickPollsActivityAtMostEvery15Seconds() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7))
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7))
 
         await model.tick()
         test.clock.advance(by: 14)
@@ -166,14 +175,89 @@ struct AppModelTests {
         #expect(transport.requests.count == 1)
     }
 
+    @Test func aStalledActivityPollDoesNotDelayDueDisables() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7))
+        model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        test.clock.advance(by: 300)
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        var forwardedEvents: [[TimerEvent]] = []
+        model.onTimerEvents = { forwardedEvents.append($0) }
+        model.scheduleTick()
+        await test.waitUntil { !forwardedEvents.isEmpty }
+
+        #expect(forwardedEvents == [[.disabled(aliasID: 7, email: "shop@example.com")]])
+        test.transport.release()
+    }
+
+    @Test func preparingForTerminationStopsTickWorkSoNothingIsForwarded() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        let forwardedAt = test.clock.now.addingTimeInterval(-5)
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, forwardedAt: forwardedAt))
+        var forwardedArrivals: [[MailArrival]] = []
+        model.onMailArrivals = { forwardedArrivals.append($0) }
+        model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        await model.prepareForTermination()
+        test.transport.release()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(forwardedArrivals.isEmpty)
+    }
+
+    @Test func preparingForTerminationDropsEventsOfInterruptedExpiryProcessing() async throws {
+        let start = TestClock().now
+        let records = [6, 7].map {
+            TimerRecord(aliasID: $0, email: "alias\($0)@example.com", enabledAt: start.addingTimeInterval(-10), expiresAt: start.addingTimeInterval(10))
+        }
+        let test = AppModelTests(records: records)
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        await model.tick()
+        test.clock.advance(by: 12)
+        test.transport.enqueue("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
+        test.transport.enqueue("/api/aliases/6/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        var forwardedEvents: [[TimerEvent]] = []
+        model.onTimerEvents = { forwardedEvents.append($0) }
+        model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        test.transport.release()
+        await model.prepareForTermination()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(forwardedEvents.isEmpty)
+        #expect(test.requestCount(path: "/api/aliases/6/toggle") == 1)
+    }
+
+    @Test func preparingForTerminationDisablesTimedAliases() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await model.prepareForTermination()
+
+        #expect(test.timerStore.records.isEmpty)
+    }
+
     @Test func signInResumesDisablesStoppedByARevokedKey() async throws {
         let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
-        test.transport.enqueue(status: 401, json: #"{"error":"Wrong api key"}"#)
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
+        test.transport.enqueue("/api/aliases/7", status: 401, json: #"{"error":"Wrong api key"}"#)
         await model.tick()
         #expect(model.engine.nextDueDate() == nil)
 
-        test.transport.enqueue(json: Fixtures.userInfoJSON)
+        test.transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         _ = try await model.signIn(apiKey: "replacement-key")
 
         #expect(model.engine.nextDueDate() != nil)
@@ -193,8 +277,8 @@ struct AppModelTests {
     @Test func signOutDisablesTimedAliasesBeforeRemovingTheKey() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
-        test.transport.enqueue(json: Fixtures.aliasJSON(id: 7, enabled: true))
-        test.transport.enqueue(json: Fixtures.toggleJSON(enabled: false))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
 
         try await model.signOut()
 
@@ -219,8 +303,8 @@ struct AppModelTests {
 
     @Test func refreshPinnedLoadsPagesUntilAPageIsNotFull() async throws {
         let model = try await signedInModel()
-        transport.enqueue(json: Fixtures.aliasPageJSON(ids: 1...20))
-        transport.enqueue(json: Fixtures.aliasPageJSON(ids: 21...23))
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...20))
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 21...23))
 
         await model.refreshPinned()
 
@@ -233,9 +317,9 @@ struct AppModelTests {
 
     @Test func refreshPinnedKeepsTheLastListWhenAPageFails() async throws {
         let model = try await signedInModel()
-        transport.enqueue(json: Fixtures.aliasPageJSON(ids: 1...3))
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
         await model.refreshPinned()
-        transport.enqueue(json: Fixtures.aliasPageJSON(ids: 1...20))
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...20))
 
         await model.refreshPinned()
 
@@ -252,9 +336,49 @@ struct AppModelTests {
         #expect(transport.requests.isEmpty)
     }
 
+    @Test func signOutWithUnreadableTimerDataKeepsTheKey() async throws {
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = AppModel(keyStore: keyStore, timerStore: UnavailableTimerStore(reason: "test"), transport: transport)
+        _ = try await model.signIn(apiKey: "valid-key")
+
+        await #expect(throws: SignOutError.timerDataUnreadable) {
+            try await model.signOut()
+        }
+
+        #expect(keyStore.key == "valid-key")
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+    }
+
+    @Test func refreshPinnedDiscardsAResultArrivingAfterSignOut() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        let refresh = Task { await model.refreshPinned() }
+        await transport.waitUntilARequestIsHeld()
+
+        try await model.signOut()
+        transport.release()
+        await refresh.value
+
+        #expect(model.pinned.isEmpty)
+    }
+
+    @Test func refreshPinnedDiscardsAResultArrivingAfterAKeyChange() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        let refresh = Task { await model.refreshPinned() }
+        await transport.waitUntilARequestIsHeld()
+
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        _ = try await model.signIn(apiKey: "other-account-key")
+        transport.release()
+        await refresh.value
+
+        #expect(model.pinned.isEmpty)
+    }
+
     @Test func signOutForgetsPinnedAliases() async throws {
         let model = try await signedInModel()
-        transport.enqueue(json: Fixtures.aliasPageJSON(ids: 1...3))
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
         await model.refreshPinned()
 
         try await model.signOut()
