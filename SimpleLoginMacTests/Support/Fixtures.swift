@@ -20,6 +20,10 @@ enum Fixtures {
         #"{"aliases":[\#(ids.map { aliasJSON(id: $0, email: "alias\($0)@example.com") }.joined(separator: ","))]}"#
     }
 
+    static func alias(id: Int, email: String = "shop@example.com", enabled: Bool = true, pinned: Bool = false, note: String? = nil) -> Alias {
+        Alias(id: id, email: email, name: nil, enabled: enabled, note: note, pinned: pinned, nbBlock: 0, nbForward: 0, latestActivity: nil, mailboxes: [])
+    }
+
     static func toggleJSON(enabled: Bool) -> String {
         #"{"enabled":\#(enabled)}"#
     }

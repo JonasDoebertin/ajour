@@ -28,6 +28,13 @@ struct SimpleLoginMacApp: App {
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
+        Window("All Aliases", id: AllAliasesView.windowID) {
+            AllAliasesView(model: appDelegate.allAliases, appModel: model)
+        }
+        .defaultSize(width: 520, height: 600)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         Settings {
             SettingsView(appModel: model, settings: appDelegate.settings, onboarding: appDelegate.onboarding)
         }

@@ -110,7 +110,7 @@ struct AliasActionsTests {
         await model.enable(aliasID: 7, for: .fiveMinutes)
         await model.disableNow(aliasID: 7)
         transport.release()
-        await first.value
+        _ = await first.value
 
         #expect(requestCount(path: "/api/aliases/7") == 1)
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
@@ -234,6 +234,113 @@ struct AliasActionsTests {
         model.disableAfter(alias: try #require(model.pinned.first), duration: .oneHour)
 
         #expect(model.lastError == CocoaError(.fileWriteNoPermission).localizedDescription)
+    }
+
+    @Test func pinningSavesThePinAndReloadsTheMenusList() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/7", method: "PATCH", json: "{}")
+        transport.enqueue("/api/v2/aliases", json: #"{"aliases":[\#(Fixtures.aliasJSON(id: 7, email: "server@example.com"))]}"#)
+
+        let succeeded = await model.setPinned(true, alias: Fixtures.alias(id: 7))
+
+        let patch = try #require(transport.requests.first { $0.httpMethod == "PATCH" })
+        let patchBody = try #require(patch.httpBody)
+        let body = try #require(try JSONSerialization.jsonObject(with: patchBody) as? [String: Any])
+        #expect(succeeded)
+        #expect(patch.url?.path == "/api/aliases/7")
+        #expect(body["pinned"] as? Bool == true)
+        #expect(model.pinned.map(\.email) == ["server@example.com"])
+        #expect(model.lastError == nil)
+    }
+
+    @Test func aPinnedAliasAppearsInTheMenuEvenWhenReloadingFails() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/7", method: "PATCH", json: "{}")
+
+        await model.setPinned(true, alias: Fixtures.alias(id: 7))
+
+        #expect(model.pinned.map(\.id) == [7])
+        #expect(model.pinned.first?.pinned == true)
+    }
+
+    @Test func anUnpinnedAliasLeavesTheMenuEvenWhenReloadingFails() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7), Fixtures.aliasJSON(id: 8)])
+        transport.enqueue("/api/aliases/7", method: "PATCH", json: "{}")
+
+        await model.setPinned(false, alias: try #require(model.pinned.first))
+
+        #expect(model.pinned.map(\.id) == [8])
+    }
+
+    @Test func aRejectedPinShowsWhyAndKeepsTheMenusList() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/7", method: "PATCH", status: 400, json: #"{"error":"Alias not found"}"#)
+
+        let succeeded = await model.setPinned(true, alias: Fixtures.alias(id: 7))
+
+        #expect(succeeded == false)
+        #expect(model.lastError == "Alias not found")
+        #expect(model.pinned.isEmpty)
+        #expect(requestCount(path: "/api/v2/aliases") == 1)
+    }
+
+    @Test func pinningWhileSignedOutExplainsThatSetupIsMissing() async {
+        let model = makeModel()
+        model.start()
+
+        let succeeded = await model.setPinned(true, alias: Fixtures.alias(id: 7))
+
+        #expect(succeeded == false)
+        #expect(model.lastError == "Not signed in. Set up your API key first.")
+    }
+
+    @Test func enablePermanentlyTurnsOnADisabledAliasWithoutATimer() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: false)])
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+
+        let succeeded = await model.enablePermanently(aliasID: 7)
+
+        #expect(succeeded)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
+        #expect(model.engine.records.isEmpty)
+        #expect(model.menuSections.pinned.first?.state == .enabled)
+        #expect(model.lastError == nil)
+    }
+
+    @Test func enablePermanentlyLeavesAnEnabledAliasAlone() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+
+        let succeeded = await model.enablePermanently(aliasID: 7)
+
+        #expect(succeeded)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
+    }
+
+    @Test func enablePermanentlyShowsWhyItFailed() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: false)])
+
+        let succeeded = await model.enablePermanently(aliasID: 7)
+
+        #expect(succeeded == false)
+        #expect(model.lastError == "Could not reach SimpleLogin. Check your network connection.")
+        #expect(model.menuSections.pinned.first?.state == .disabled)
+    }
+
+    @Test func enablePermanentlyIsIgnoredWhileAnotherActionOnTheAliasRuns() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: false)])
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        let enable = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await transport.waitUntilARequestIsHeld()
+
+        let succeeded = await model.enablePermanently(aliasID: 7)
+        transport.release()
+        _ = await enable.value
+
+        #expect(succeeded == false)
+        #expect(requestCount(path: "/api/aliases/7") == 1)
     }
 
     @Test func copyPutsTheEmailOnTheClipboard() {

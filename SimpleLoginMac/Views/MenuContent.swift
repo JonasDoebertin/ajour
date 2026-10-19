@@ -77,6 +77,7 @@ struct MenuContent: View {
             }
         }
         Button("New Alias…") { openWindow.frontmost(id: NewAliasView.windowID) }
+        Button("All Aliases…") { openWindow.frontmost(id: AllAliasesView.windowID) }
     }
 }
 

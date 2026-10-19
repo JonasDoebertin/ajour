@@ -6,6 +6,7 @@ import SimpleLoginKit
     let onboarding: OnboardingModel
     let settings: SettingsModel
     let newAlias: NewAliasModel
+    let allAliases: AllAliasesModel
     let notifications: NotificationController
 
     override init() {
@@ -26,6 +27,7 @@ import SimpleLoginKit
         )
         settings = SettingsModel(appModel: model, launchAtLogin: .system)
         newAlias = NewAliasModel(appModel: model)
+        allAliases = AllAliasesModel(appModel: model)
         super.init()
     }
 

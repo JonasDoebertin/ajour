@@ -165,7 +165,8 @@ enum AliasCreationError: Error, Equatable {
         MenuSections.make(pinned: pinned, records: engine.records, now: now)
     }
 
-    func enable(aliasID: Int, for duration: AliasDuration) async {
+    @discardableResult
+    func enable(aliasID: Int, for duration: AliasDuration) async -> Bool {
         await perform(on: aliasID) {
             _ = try await engine.enable(aliasID: aliasID, for: duration)
             markPinned(aliasID: aliasID, enabled: true)
@@ -176,7 +177,8 @@ enum AliasCreationError: Error, Equatable {
         perform { try engine.extend(aliasID: aliasID, by: duration) }
     }
 
-    func disableNow(aliasID: Int) async {
+    @discardableResult
+    func disableNow(aliasID: Int) async -> Bool {
         await perform(on: aliasID) {
             try await engine.disableNow(aliasID: aliasID)
             markPinned(aliasID: aliasID, enabled: false)
@@ -204,6 +206,28 @@ enum AliasCreationError: Error, Equatable {
     func createCustomAlias(prefix: String, suffix: AliasSuffix, mailboxID: Int, expiringAfter duration: AliasDuration?) async throws -> Alias {
         try await createAlias(expiringAfter: duration) {
             try await $0.createCustomAlias(prefix: prefix, signedSuffix: suffix.signedSuffix, mailboxIDs: [mailboxID])
+        }
+    }
+
+    /// Pinned aliases are listed in the menu. The menu's list changes right away and is then reloaded.
+    @discardableResult
+    func setPinned(_ isPinned: Bool, alias: Alias) async -> Bool {
+        let succeeded = await perform(on: alias.id) {
+            guard let api else { throw TimerEngineError.notSignedIn }
+            try await api.setPinned(isPinned, aliasID: alias.id)
+            patchPinnedList(with: alias.settingPinned(isPinned))
+        }
+        if succeeded { await refreshPinned() }
+        return succeeded
+    }
+
+    /// Keeps the alias enabled until the user disables it, so no timer starts.
+    @discardableResult
+    func enablePermanently(aliasID: Int) async -> Bool {
+        await perform(on: aliasID) {
+            guard let api else { throw TimerEngineError.notSignedIn }
+            _ = try await AliasSwitch(api: api).ensureEnabled(aliasID: aliasID)
+            markPinned(aliasID: aliasID, enabled: true)
         }
     }
 
@@ -315,15 +339,17 @@ enum AliasCreationError: Error, Equatable {
     }
 
     /// Ignores a second action on the alias while one runs: two enables could both read "disabled"
-    /// and toggle twice, leaving the alias disabled.
-    private func perform(on aliasID: Int, _ action: () async throws -> Void) async {
-        guard busyAliasIDs.insert(aliasID).inserted else { return }
+    /// and toggle twice, leaving the alias disabled. Returns whether the action ran and succeeded.
+    private func perform(on aliasID: Int, _ action: () async throws -> Void) async -> Bool {
+        guard busyAliasIDs.insert(aliasID).inserted else { return false }
         defer { busyAliasIDs.remove(aliasID) }
         do {
             try await action()
             lastError = nil
+            return true
         } catch {
             lastError = Self.userMessage(for: error)
+            return false
         }
     }
 
@@ -366,6 +392,16 @@ enum AliasCreationError: Error, Equatable {
         pinned[index] = pinned[index].settingEnabled(enabled)
     }
 
+    private func patchPinnedList(with alias: Alias) {
+        pinnedRevision += 1
+        if alias.pinned {
+            guard !pinned.contains(where: { $0.id == alias.id }) else { return }
+            pinned.append(alias)
+        } else {
+            pinned.removeAll { $0.id == alias.id }
+        }
+    }
+
     static func userMessage(for error: any Error) -> String {
         switch error {
         case let error as APIError:
@@ -391,5 +427,22 @@ enum AliasCreationError: Error, Equatable {
         apiKeyInvalid = false
         self.api = api
         engine.api = api
+    }
+}
+
+extension Alias {
+    func settingPinned(_ pinned: Bool) -> Alias {
+        Alias(
+            id: id,
+            email: email,
+            name: name,
+            enabled: enabled,
+            note: note,
+            pinned: pinned,
+            nbBlock: nbBlock,
+            nbForward: nbForward,
+            latestActivity: latestActivity,
+            mailboxes: mailboxes
+        )
     }
 }
