@@ -68,6 +68,8 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
+    /// Set once quitting starts, so no tick work starts and nothing more is forwarded.
+    @ObservationIgnored private var isShuttingDown = false
 
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
@@ -292,9 +294,10 @@ enum AliasActionError: Error, Equatable {
 
     /// Stops ticking so no poll or event fires during shutdown, then tries to disable timed aliases within
     /// the budget. Records of aliases that stay enabled remain on disk for the next launch.
+    /// A running expiry pass is left alone: `disableAll` joins its attempts, and cancelling it would start them over.
     func prepareForTermination() async {
+        isShuttingDown = true
         tickLoop?.cancel()
-        dueProcessing?.cancel()
         activityPoll?.cancel()
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
@@ -315,6 +318,7 @@ enum AliasActionError: Error, Equatable {
     /// at a time and independently, so a slow poll never holds back a due disable.
     @discardableResult
     func scheduleTick() -> [Task<Void, Never>] {
+        guard !isShuttingDown else { return [] }
         now = currentDate()
         return [startDueProcessingIfNeeded(), startActivityPollIfNeeded()].compactMap { $0 }
     }
@@ -324,7 +328,7 @@ enum AliasActionError: Error, Equatable {
         let work = Task {
             let events = await engine.processDue()
             dueProcessing = nil
-            guard !events.isEmpty, !Task.isCancelled else { return }
+            guard !events.isEmpty, !isShuttingDown else { return }
             if events.contains(.unauthorized) { apiKeyInvalid = true }
             onTimerEvents(events)
         }
@@ -338,7 +342,7 @@ enum AliasActionError: Error, Equatable {
         let work = Task {
             let arrivals = await engine.pollActivity()
             activityPoll = nil
-            if !arrivals.isEmpty, !Task.isCancelled { onMailArrivals(arrivals) }
+            if !arrivals.isEmpty, !Task.isCancelled, !isShuttingDown { onMailArrivals(arrivals) }
         }
         activityPoll = work
         return work

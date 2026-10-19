@@ -62,7 +62,8 @@ final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
 }
 
 /// Answers each "METHOD /path" route from its own queue, so concurrent callers can't take each
-/// other's responses. A held request waits until `release()`.
+/// other's responses. A held request waits until `release()`; like URLSession, it fails if its task
+/// was cancelled meanwhile.
 final class StubTransport: HTTPTransport, @unchecked Sendable {
     private struct Response {
         let status: Int
@@ -122,6 +123,7 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
                 }
                 waiters.forEach { $0.resume() }
             }
+            if Task.isCancelled { throw URLError(.cancelled) }
         }
         let next: Response? = heldResponse ?? lock.withLock {
             responses[route]?.isEmpty == false ? responses[route]?.removeFirst() : nil

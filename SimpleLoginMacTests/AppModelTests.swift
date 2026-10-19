@@ -334,6 +334,25 @@ struct AppModelTests {
         #expect(test.requestCount(path: "/api/aliases/6/toggle") == 1)
     }
 
+    @Test func quittingWhileAnExpiryDisableRunsLetsItFinishInsteadOfStartingOver() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        let quit = Task { await model.prepareForTermination() }
+        for _ in 0..<20 { await Task.yield() }
+        test.transport.release()
+        await quit.value
+
+        #expect(test.requestCount(path: "/api/aliases/7") == 1)
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 1)
+        #expect(model.engine.records.isEmpty)
+        #expect(test.timerStore.records.isEmpty)
+    }
+
     @Test func preparingForTerminationDisablesTimedAliases() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
