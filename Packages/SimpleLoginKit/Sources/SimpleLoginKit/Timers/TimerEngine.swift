@@ -178,8 +178,14 @@ public enum TimerEngineError: Error, Equatable {
     }
 
     /// Joins the alias's in-flight attempt, or starts one. A successful attempt drops the record.
+    /// Any awaiter that is cancelled cancels the shared attempt, so an awaiter that wasn't cancelled
+    /// itself starts over instead of taking on someone else's cancellation.
     private func disable(aliasID: Int) async -> DisableOutcome {
-        await outcome(of: disablesInFlight[aliasID] ?? startDisable(aliasID: aliasID))
+        if let inFlight = disablesInFlight[aliasID] {
+            let joinedOutcome = await outcome(of: inFlight)
+            guard case .cancelled = joinedOutcome, !Task.isCancelled else { return joinedOutcome }
+        }
+        return await outcome(of: disablesInFlight[aliasID] ?? startDisable(aliasID: aliasID))
     }
 
     private func outcome(of attempt: Task<DisableOutcome, Never>) async -> DisableOutcome {

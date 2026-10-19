@@ -2,6 +2,7 @@ import Foundation
 @testable import SimpleLoginKit
 
 /// Holds every `alias(id:)` request at a closed gate, so tests can act while a request is in flight.
+/// Like URLSession, a request whose task was cancelled meanwhile fails once released.
 final class GatedAliasAPI: AliasAPI, @unchecked Sendable {
     let base: FakeAliasAPI
     private let lock = NSLock()
@@ -14,6 +15,7 @@ final class GatedAliasAPI: AliasAPI, @unchecked Sendable {
 
     func alias(id: Int) async throws -> Alias {
         await passGate()
+        try Task.checkCancellation()
         return try await base.alias(id: id)
     }
 

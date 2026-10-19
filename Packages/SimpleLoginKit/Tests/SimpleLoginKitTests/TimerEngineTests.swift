@@ -722,6 +722,23 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.records.count == 1)
     }
 
+    @Test func disableAllRetriesWhenJoinedDisableWasCancelled() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        clock.advance(by: 300)
+
+        let tick = Task { await engine.processDue() }
+        await gated.waitUntilHolding(1)
+        tick.cancel()
+        let quit = TrackedTask { await engine.disableAll(within: .seconds(5)) }
+        await yieldRepeatedly()
+        gated.open()
+
+        #expect(try await quit.value)
+        #expect(api.aliases[1]?.enabled == false)
+        #expect(engine.records.isEmpty)
+        #expect(await tick.value.isEmpty)
+    }
+
     @Test func disableAllReportsFailureWhenTimerFileIsUnreadable() async {
         let engine = makeEngine(store: InMemoryTimerStore(failLoad: true))
 
