@@ -130,6 +130,23 @@ public enum TimerEngineError: Error, Equatable {
         return events
     }
 
+    /// Checks every running timer's alias for a mail forwarded since it was enabled and reports each mail once.
+    /// A failed fetch is skipped; the next poll tries again.
+    public func pollActivity() async -> [MailArrival] {
+        var arrivals: [MailArrival] = []
+        for aliasID in records.map(\.aliasID) {
+            guard let api, !Task.isCancelled else { break }
+            guard let alias = try? await api.alias(id: aliasID) else { continue }
+            guard let index = recordIndex(for: aliasID), records[index].expiresAt > now(),
+                  let arrival = MailArrivalDetector.arrival(in: alias, for: records[index])
+            else { continue }
+            records[index].lastNotifiedActivityTimestamp = arrival.timestamp
+            try? save()
+            arrivals.append(arrival)
+        }
+        return arrivals
+    }
+
     public func nextDueDate() -> Date? {
         records.compactMap { record -> Date? in
             switch failures[record.aliasID] {

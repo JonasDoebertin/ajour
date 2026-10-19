@@ -745,6 +745,176 @@ final class TestClock: @unchecked Sendable {
         #expect(await engine.disableAll(within: .seconds(5)) == false)
     }
 
+    // MARK: - Mail arrival
+
+    private func forwardActivity(at timestamp: Date) -> AliasActivity {
+        AliasActivity(action: .forward, timestamp: timestamp, contact: AliasContact(email: "login@shop.com", name: nil))
+    }
+
+    private func arrival(of aliasID: Int, email: String, at timestamp: Date) -> MailArrival {
+        MailArrival(aliasID: aliasID, aliasEmail: email, sender: "login@shop.com", timestamp: timestamp)
+    }
+
+    private func receiveMail(forAliasID aliasID: Int, email: String, at timestamp: Date) {
+        api.aliases[aliasID] = .fixture(
+            id: aliasID,
+            email: email,
+            enabled: true,
+            latestActivity: forwardActivity(at: timestamp)
+        )
+    }
+
+    @Test func pollReportsArrivalOnceThenNotAgain() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        let mailTime = t0.addingTimeInterval(30)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: mailTime)
+
+        let first = await engine.pollActivity()
+        let second = await engine.pollActivity()
+
+        #expect(first == [arrival(of: 1, email: "one@example.com", at: mailTime)])
+        #expect(second.isEmpty)
+        #expect(engine.record(for: 1)?.lastNotifiedActivityTimestamp == mailTime)
+        #expect(store.records.first?.lastNotifiedActivityTimestamp == mailTime)
+    }
+
+    @Test func pollAfterExtendDoesNotRenotify() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        #expect(await engine.pollActivity().count == 1)
+        clock.advance(by: 60)
+
+        try engine.extend(aliasID: 1, by: .oneHour)
+
+        #expect(await engine.pollActivity().isEmpty)
+    }
+
+    @Test func pollIgnoresMailForwardedBeforeEnabling() async throws {
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(-3600))
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+
+        #expect(await engine.pollActivity().isEmpty)
+        #expect(engine.record(for: 1)?.lastNotifiedActivityTimestamp == nil)
+    }
+
+    @Test func pollReportsNewerMailAfterEarlierOne() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        _ = await engine.pollActivity()
+        let laterMail = t0.addingTimeInterval(90)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: laterMail)
+
+        #expect(await engine.pollActivity() == [arrival(of: 1, email: "one@example.com", at: laterMail)])
+    }
+
+    @Test func pollCoversEveryTimedAlias() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        receiveMail(forAliasID: 2, email: "two@example.com", at: t0.addingTimeInterval(40))
+
+        let arrivals = await engine.pollActivity()
+
+        #expect(arrivals.map(\.aliasID) == [1, 2])
+    }
+
+    @Test func pollSkipsExpiredRecords() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        clock.advance(by: 301)
+
+        #expect(await engine.pollActivity().isEmpty)
+        #expect(engine.record(for: 1)?.lastNotifiedActivityTimestamp == nil)
+    }
+
+    @Test func pollRetriesAfterFetchError() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        let mailTime = t0.addingTimeInterval(30)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: mailTime)
+        api.errors = [URLError(.notConnectedToInternet)]
+
+        let failed = await engine.pollActivity()
+        let retried = await engine.pollActivity()
+
+        #expect(failed.isEmpty)
+        #expect(retried == [arrival(of: 1, email: "one@example.com", at: mailTime)])
+    }
+
+    @Test func pollWithoutAPIReportsNothing() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        engine.api = nil
+
+        #expect(await engine.pollActivity().isEmpty)
+    }
+
+    @Test func pollRemovedDuringFetchDoesNotResurrectRecord() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        let polling = Task { await engine.pollActivity() }
+        await gated.waitUntilHolding(1)
+        engine.api = api
+        try await engine.disableNow(aliasID: 1)
+
+        gated.open()
+
+        #expect(await polling.value.isEmpty)
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+    }
+
+    @Test func pollExpiredDuringFetchReportsNothing() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        let polling = Task { await engine.pollActivity() }
+        await gated.waitUntilHolding(1)
+        clock.advance(by: 301)
+
+        gated.open()
+
+        #expect(await polling.value.isEmpty)
+        #expect(engine.record(for: 1)?.lastNotifiedActivityTimestamp == nil)
+    }
+
+    @Test func overlappingPollsReportOneArrival() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30))
+        let firstPoll = Task { await engine.pollActivity() }
+        let secondPoll = Task { await engine.pollActivity() }
+        await gated.waitUntilHolding(2)
+
+        gated.open()
+
+        let arrivals = await firstPoll.value + secondPoll.value
+        #expect(arrivals.count == 1)
+    }
+
+    @Test func reloadedRecordDoesNotRenotifySameActivity() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("timers.json")
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let fileStore = FileTimerStore(fileURL: fileURL)
+        let clock = clock
+        let engine = TimerEngine(store: fileStore, now: { clock.now })
+        engine.api = api
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        receiveMail(forAliasID: 1, email: "one@example.com", at: t0.addingTimeInterval(30.7))
+        #expect(await engine.pollActivity().count == 1)
+
+        let relaunched = TimerEngine(store: fileStore, now: { clock.now })
+        relaunched.api = api
+
+        #expect(await relaunched.pollActivity().isEmpty)
+    }
+
     // MARK: - Signed out
 
     @Test func operationsWithoutAPIThrowNotSignedIn() async throws {
