@@ -1,0 +1,57 @@
+name: SimpleLoginMac
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  SimpleLoginKit:
+    path: Packages/SimpleLoginKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+targets:
+  SimpleLoginMac:
+    type: application
+    platform: macOS
+    sources:
+      - SimpleLoginMac
+    dependencies:
+      - package: SimpleLoginKit
+    info:
+      path: SimpleLoginMac/Info.plist
+      properties:
+        CFBundleDisplayName: SimpleLogin for macOS
+        LSUIElement: true
+    entitlements:
+      path: SimpleLoginMac/SimpleLoginMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_NAME: SimpleLoginMac
+        PRODUCT_BUNDLE_IDENTIFIER: de.doebertin.simplelogin-macos
+        ENABLE_HARDENED_RUNTIME: YES
+  SimpleLoginMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - SimpleLoginMacTests
+    dependencies:
+      - target: SimpleLoginMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.doebertin.simplelogin-macos.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  SimpleLoginMac:
+    build:
+      targets:
+        SimpleLoginMac: all
+        SimpleLoginMacTests: [test]
+    test:
+      targets:
+        - SimpleLoginMacTests
