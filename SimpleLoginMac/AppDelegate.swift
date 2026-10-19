@@ -3,14 +3,28 @@ import SimpleLoginKit
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
+    let onboarding: OnboardingModel
+    let settings: SettingsModel
+    let notifications: NotificationController
 
     override init() {
+        let notifications = NotificationController()
+        self.notifications = notifications
         model = AppModel(timerStore: Self.makeTimerStore())
+        onboarding = OnboardingModel(
+            appModel: model,
+            launchAtLogin: .system,
+            requestNotificationAuthorization: { await notifications.requestAuthorization() }
+        )
+        settings = SettingsModel(appModel: model, launchAtLogin: .system)
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isHostingUnitTests else { return }
+        #if DEBUG
+        if KeychainAccessCheck.isRequested { KeychainAccessCheck.run() }
+        #endif
         model.start()
     }
 

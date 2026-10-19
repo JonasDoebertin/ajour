@@ -1,14 +1,19 @@
 import Foundation
 import SimpleLoginKit
+@testable import SimpleLoginMac
 
 final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var storedKey: String?
     private let failsToLoad: Bool
+    private let failsToSave: Bool
+    private let failsToDelete: Bool
 
-    init(key: String? = nil, failsToLoad: Bool = false) {
+    init(key: String? = nil, failsToLoad: Bool = false, failsToSave: Bool = false, failsToDelete: Bool = false) {
         storedKey = key
         self.failsToLoad = failsToLoad
+        self.failsToSave = failsToSave
+        self.failsToDelete = failsToDelete
     }
 
     var key: String? {
@@ -21,10 +26,12 @@ final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     }
 
     func save(_ key: String) throws {
+        if failsToSave { throw KeychainError.status(errSecInteractionNotAllowed) }
         lock.withLock { storedKey = key }
     }
 
     func delete() throws {
+        if failsToDelete { throw KeychainError.status(errSecInteractionNotAllowed) }
         lock.withLock { storedKey = nil }
     }
 }
@@ -140,4 +147,30 @@ final class TestClock: @unchecked Sendable {
     func advance(by seconds: TimeInterval) {
         lock.withLock { current = current.addingTimeInterval(seconds) }
     }
+}
+
+@MainActor final class FakeLaunchAtLogin {
+    var isEnabled: Bool
+    var failure: (any Error)?
+    private(set) var appliedSettings: [Bool] = []
+
+    init(isEnabled: Bool = false, failure: (any Error)? = nil) {
+        self.isEnabled = isEnabled
+        self.failure = failure
+    }
+
+    var control: LaunchAtLoginControl {
+        LaunchAtLoginControl(
+            isEnabled: { self.isEnabled },
+            setEnabled: { enabled in
+                if let failure = self.failure { throw failure }
+                self.appliedSettings.append(enabled)
+                self.isEnabled = enabled
+            }
+        )
+    }
+}
+
+struct LaunchAtLoginRefused: LocalizedError {
+    var errorDescription: String? { "Operation not permitted" }
 }

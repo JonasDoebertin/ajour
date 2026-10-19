@@ -70,6 +70,51 @@ struct AppModelTests {
         #expect(model.engine.api == nil)
     }
 
+    @Test func startWithStoredKeyLoadsTheAccount() async {
+        let test = AppModelTests(storedKey: "stored-key")
+        test.transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = test.makeModel()
+
+        model.start()
+        await test.waitUntil { model.userInfo != nil }
+
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+        #expect(model.userInfo == Fixtures.userInfo)
+    }
+
+    @Test func loadingTheAccountFailsWithoutLeavingTheSignedInPhase() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
+
+        await model.loadUserInfo()
+
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+    }
+
+    @Test func loadingTheAccountWhileSignedOutRequestsNothing() async {
+        let model = makeModel()
+        model.start()
+
+        await model.loadUserInfo()
+
+        #expect(model.phase == .signedOut)
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func loadingTheAccountDiscardsAResultArrivingAfterSignOut() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/user_info", json: Fixtures.userInfoJSON)
+        let load = Task { await model.loadUserInfo() }
+        await transport.waitUntilARequestIsHeld()
+
+        try await model.signOut()
+        transport.release()
+        await load.value
+
+        #expect(model.phase == .signedOut)
+        #expect(model.userInfo == nil)
+    }
+
     @Test func signInValidatesTheKeyAndSavesIt() async throws {
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         let model = makeModel()
@@ -299,6 +344,12 @@ struct AppModelTests {
         #expect(test.keyStore.key == "valid-key")
         #expect(model.phase == .signedIn(Fixtures.userInfo))
         #expect(model.engine.api != nil)
+    }
+
+    @Test func signOutErrorsExplainWhySignOutIsBlocked() {
+        #expect(SignOutError.aliasesStillEnabled(count: 2).userMessage == "2 aliases are still enabled. Check your connection and try again.")
+        #expect(SignOutError.aliasesStillEnabled(count: 1).userMessage == "1 alias is still enabled. Check your connection and try again.")
+        #expect(SignOutError.timerDataUnreadable.userMessage == "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases.")
     }
 
     @Test func refreshPinnedLoadsPagesUntilAPageIsNotFull() async throws {

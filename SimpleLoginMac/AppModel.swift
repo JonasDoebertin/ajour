@@ -5,6 +5,16 @@ import SimpleLoginKit
 enum SignOutError: Error, Equatable {
     case aliasesStillEnabled(count: Int)
     case timerDataUnreadable
+
+    var userMessage: String {
+        switch self {
+        case .aliasesStillEnabled(let count):
+            let aliases = count == 1 ? "1 alias is" : "\(count) aliases are"
+            return "\(aliases) still enabled. Check your connection and try again."
+        case .timerDataUnreadable:
+            return "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases."
+        }
+    }
 }
 
 @MainActor @Observable final class AppModel {
@@ -60,11 +70,25 @@ enum SignOutError: Error, Equatable {
         if let key = try? keyStore.load() {
             connect(SimpleLoginAPI(apiKey: key, transport: transport))
             phase = .signedIn(nil)
+            Task { await loadUserInfo() }
         } else {
             phase = .signedOut
         }
         startTickLoop()
         observeWake()
+    }
+
+    var userInfo: UserInfo? {
+        guard case .signedIn(let userInfo) = phase else { return nil }
+        return userInfo
+    }
+
+    /// The account shown in Settings. A failure keeps the signed-in phase without account details.
+    func loadUserInfo() async {
+        guard let api else { return }
+        let session = self.session
+        guard let userInfo = try? await api.userInfo(), session == self.session else { return }
+        phase = .signedIn(userInfo)
     }
 
     /// Only a key the server accepts is saved, so a typo never replaces a working key.
