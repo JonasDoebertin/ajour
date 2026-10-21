@@ -24,12 +24,12 @@ struct MenuTitleTests {
     @Test func aShortErrorIsShownInFull() {
         let message = String(repeating: "a", count: 80)
 
-        #expect(MenuContent.errorTitle(for: message) == message)
+        #expect(MenuEntry.errorTitle(for: message) == message)
     }
 
     @Test func aLongErrorIsShortenedToEightyCharacters() {
         let message = String(repeating: "a", count: 81)
 
-        #expect(MenuContent.errorTitle(for: message) == String(repeating: "a", count: 79) + "…")
+        #expect(MenuEntry.errorTitle(for: message) == String(repeating: "a", count: 79) + "…")
     }
 }

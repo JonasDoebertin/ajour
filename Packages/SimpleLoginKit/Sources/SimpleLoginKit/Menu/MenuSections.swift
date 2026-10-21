@@ -22,6 +22,11 @@ public struct MenuSections: Equatable, Sendable {
     public let timedUnpinned: [MenuAliasItem]
     public let pinned: [MenuAliasItem]
 
+    public init(timedUnpinned: [MenuAliasItem], pinned: [MenuAliasItem]) {
+        self.timedUnpinned = timedUnpinned
+        self.pinned = pinned
+    }
+
     public static func make(pinned: [Alias], records: [TimerRecord], now: Date) -> MenuSections {
         let recordsByAliasID = Dictionary(records.map { ($0.aliasID, $0) }, uniquingKeysWith: { first, _ in first })
         let pinnedIDs = Set(pinned.map(\.id))

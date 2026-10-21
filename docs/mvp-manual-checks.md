@@ -14,18 +14,19 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 4. After a relaunch, no onboarding appears, and Settings shows name and email.
 5. Settings > Sign Out returns to onboarding.
 6. Settings > Replace API Key… goes straight to the key step and closes after confirmation.
-7. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
-8. Copy a key in the browser and switch back: "Use key from clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
-9. With ad-hoc signing, the Launch-at-login toggle may show "Could not change launch at login. …" instead of crashing.
+7. "Settings…" in the menu, and ⌘, while an Ajour window is in front, both open Settings in front.
+8. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
+9. Copy a key in the browser and switch back: "Use key from clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
+10. With ad-hoc signing, the Launch-at-login toggle may show "Could not change launch at login. …" instead of crashing.
 
 ## Menu: pinned and timed aliases
 
-1. Pin a disabled test alias in the web app and open the menu. It appears as "○ alias@…" (on that first open, or on the second one if the refresh is still running).
+1. Pin a disabled test alias in the web app and open the menu. It appears as "○ alias@…", at the latest a moment after the menu opens.
 2. "Enable for 5 Minutes":
    - The alias is enabled in the web app.
    - The menu bar icon switches to `envelope.badge.fill`.
    - The title shows "● … · 4:59 left".
-3. The remaining time counts down. Check with the menu kept open, and again after reopening.
+3. The remaining time counts down while the menu is open, also while that alias's submenu is open. The submenu stays open.
 4. "Extend" ▸ "1 Hour": the remaining time jumps to about 1:00:00.
 5. "Disable Now":
    - The alias is disabled in the web app.

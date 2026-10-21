@@ -10,6 +10,7 @@ import SwiftUI
     let allAliases: AllAliasesModel
     let notifications: NotificationController
     let windows: WindowCoordinator
+    private var statusMenu: StatusMenuController?
 
     override init() {
         let model = AppModel(timerStore: Self.makeTimerStore())
@@ -75,6 +76,29 @@ import SwiftUI
         if KeychainAccessCheck.isRequested { KeychainAccessCheck.run() }
         #endif
         model.start()
+        statusMenu = StatusMenuController(model: model, onboarding: onboarding, windows: windows)
+        followSession()
+    }
+
+    /// Opens onboarding whenever there is no API key, at launch and after signing out, and keeps the pinned
+    /// list fresh for each key.
+    private func followSession() {
+        Task { [model, windows] in
+            var previousPhase: AppModel.Phase?
+            for await phase in Observations({ model.phase }) where phase != previousPhase {
+                previousPhase = phase
+                if phase == .signedOut { windows.show(.onboarding) }
+            }
+        }
+        Task { [model] in
+            var previousSession: Int?
+            var pinnedRefresh: Task<Void, Never>?
+            for await session in Observations({ model.session }) where session != previousSession {
+                previousSession = session
+                pinnedRefresh?.cancel()
+                pinnedRefresh = Task { await model.keepPinnedFresh() }
+            }
+        }
     }
 
     /// Records of aliases that could not be disabled in time stay on disk for the next launch.

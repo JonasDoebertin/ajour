@@ -191,6 +191,17 @@ enum AliasActionError: Error, Equatable {
         MenuSections.make(pinned: pinned, records: engine.records, now: now)
     }
 
+    func menuState(at date: Date) -> MenuState {
+        MenuState(
+            phase: phase,
+            lastError: lastError,
+            apiKeyInvalid: apiKeyInvalid,
+            timerDataUnreadable: engine.loadError != nil,
+            sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
+            busyAliasIDs: busyAliasIDs
+        )
+    }
+
     @discardableResult
     func enable(aliasID: Int, for duration: AliasDuration) async -> Bool {
         await whileEnabling {

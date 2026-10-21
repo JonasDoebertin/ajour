@@ -152,7 +152,7 @@ Quit
 
 ## Technical decisions (Claude's calls, all overridable)
 
-- Swift 6 with strict concurrency, SwiftUI, `MenuBarExtra` with `.menu` style; `LSUIElement = YES` (no Dock icon). Fall back to AppKit (`NSStatusItem`/`NSMenu`) only if `MenuBarExtra` can't do live submenu updates well enough.
+- Swift 6 with strict concurrency; `LSUIElement = YES` (no Dock icon). The menu bar item is AppKit (`NSStatusItem`/`NSMenu`): `MenuBarExtra` rebuilds its whole menu on every change, which closes open submenus and rules out live countdowns. Windows are `NSWindow`s hosting SwiftUI views, because AppKit code can't use SwiftUI's `openWindow`.
 - Deployment target: macOS 26 (the only Mac it runs on right now). Development: Xcode 27, Swift 6.4.
 - No third-party dependencies: `URLSession` with async/await, `Codable`, Security framework for Keychain, `UserNotifications`, `ServiceManagement`.
 - App Sandbox with the outgoing network client entitlement.
