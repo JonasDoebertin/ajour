@@ -8,35 +8,21 @@ struct AjourApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: model, onboarding: appDelegate.onboarding)
+            MenuContent(model: model, onboarding: appDelegate.onboarding, windows: appDelegate.windows)
         } label: {
-            MenuBarLabel(model: model)
+            MenuBarLabel(model: model, windows: appDelegate.windows)
         }
         .menuBarExtraStyle(.menu)
 
-        Window("Set Up", id: OnboardingView.windowID) {
-            OnboardingView(model: appDelegate.onboarding)
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-
-        Window("New Alias", id: NewAliasView.windowID) {
-            NewAliasView(model: appDelegate.newAlias)
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-
-        Window("All Aliases", id: AllAliasesView.windowID) {
-            AllAliasesView(model: appDelegate.allAliases, appModel: model)
-        }
-        .defaultSize(width: 520, height: 600)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-
+        // Windows open through `WindowCoordinator`; this scene only routes the Settings shortcut there.
         Settings {
-            SettingsView(appModel: model, settings: appDelegate.settings, onboarding: appDelegate.onboarding)
+            EmptyView()
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.windows.show(.settings) }
+                    .keyboardShortcut(",")
+            }
         }
     }
 }
@@ -46,7 +32,7 @@ struct AjourApp: App {
 /// `onAppear` fires only once, not on every open, so opening is detected through menu tracking.
 private struct MenuBarLabel: View {
     let model: AppModel
-    @Environment(\.openWindow) private var openWindow
+    let windows: WindowCoordinator
 
     var body: some View {
         Image(systemName: model.engine.hasActiveTimers ? "envelope.badge.fill" : "envelope")
@@ -55,15 +41,7 @@ private struct MenuBarLabel: View {
                 Task { await model.refreshPinned() }
             }
             .onChange(of: model.phase, initial: true) { _, phase in
-                if phase == .signedOut { openWindow.frontmost(id: OnboardingView.windowID) }
+                if phase == .signedOut { windows.show(.onboarding) }
             }
-    }
-}
-
-extension OpenWindowAction {
-    /// A menu bar app isn't active by itself, so without activating, the window opens behind other apps.
-    func frontmost(id: String) {
-        self(id: id)
-        NSApp.activate()
     }
 }

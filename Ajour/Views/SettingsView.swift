@@ -4,7 +4,7 @@ struct SettingsView: View {
     let appModel: AppModel
     let settings: SettingsModel
     let onboarding: OnboardingModel
-    @Environment(\.openWindow) private var openWindow
+    let openOnboarding: () -> Void
 
     var body: some View {
         Form {
@@ -45,7 +45,7 @@ struct SettingsView: View {
     @ViewBuilder private var account: some View {
         if appModel.phase == .signedOut {
             Text("Not signed in.")
-            Button("Set Up…") { openWindow.frontmost(id: OnboardingView.windowID) }
+            Button("Set Up…") { openOnboarding() }
         } else {
             if let userInfo = appModel.userInfo {
                 LabeledContent("Name", value: userInfo.name)
@@ -57,7 +57,7 @@ struct SettingsView: View {
             HStack {
                 Button("Replace API Key…") {
                     onboarding.beginKeyReplacement()
-                    openWindow.frontmost(id: OnboardingView.windowID)
+                    openOnboarding()
                 }
                 Spacer()
                 if settings.isSigningOut {

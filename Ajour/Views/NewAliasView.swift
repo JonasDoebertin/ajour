@@ -2,10 +2,8 @@ import SimpleLoginKit
 import SwiftUI
 
 struct NewAliasView: View {
-    static let windowID = "new-alias"
-
     @Bindable var model: NewAliasModel
-    @Environment(\.dismissWindow) private var dismissWindow
+    let close: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -56,7 +54,7 @@ struct NewAliasView: View {
         .frame(width: 420, alignment: .leading)
         .task { await model.load() }
         .onChange(of: model.isComplete) { _, isComplete in
-            if isComplete { dismissWindow(id: Self.windowID) }
+            if isComplete { close() }
         }
         .onDisappear { model.reset() }
     }

@@ -2,8 +2,6 @@ import SimpleLoginKit
 import SwiftUI
 
 struct AllAliasesView: View {
-    static let windowID = "all-aliases"
-
     @Bindable var model: AllAliasesModel
     let appModel: AppModel
 

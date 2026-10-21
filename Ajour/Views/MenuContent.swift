@@ -4,8 +4,7 @@ import SwiftUI
 struct MenuContent: View {
     let model: AppModel
     let onboarding: OnboardingModel
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
+    let windows: WindowCoordinator
 
     var body: some View {
         if let lastError = model.lastError {
@@ -16,7 +15,7 @@ struct MenuContent: View {
         if model.apiKeyInvalid {
             Button("API key invalid – Re-enter Key…") {
                 onboarding.beginKeyReplacement()
-                openWindow.frontmost(id: OnboardingView.windowID)
+                windows.show(.onboarding)
             }
             Divider()
         }
@@ -26,17 +25,14 @@ struct MenuContent: View {
             Divider()
         }
         if model.phase == .signedOut {
-            Button("Set Up…") { openWindow.frontmost(id: OnboardingView.windowID) }
+            Button("Set Up…") { windows.show(.onboarding) }
             Divider()
         }
         if case .signedIn = model.phase {
             aliasSections
             aliasCreation
             Divider()
-            Button("Settings…") {
-                openSettings()
-                NSApp.activate()
-            }
+            Button("Settings…") { windows.show(.settings) }
             .keyboardShortcut(",")
             Divider()
         }
@@ -76,8 +72,8 @@ struct MenuContent: View {
                 }
             }
         }
-        Button("New Alias…") { openWindow.frontmost(id: NewAliasView.windowID) }
-        Button("All Aliases…") { openWindow.frontmost(id: AllAliasesView.windowID) }
+        Button("New Alias…") { windows.show(.newAlias) }
+        Button("All Aliases…") { windows.show(.allAliases) }
     }
 }
 

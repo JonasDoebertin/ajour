@@ -1,5 +1,6 @@
 import AppKit
 import SimpleLoginKit
+import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
@@ -8,6 +9,7 @@ import SimpleLoginKit
     let newAlias: NewAliasModel
     let allAliases: AllAliasesModel
     let notifications: NotificationController
+    let windows: WindowCoordinator
 
     override init() {
         let model = AppModel(timerStore: Self.makeTimerStore())
@@ -20,14 +22,44 @@ import SimpleLoginKit
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications
-        onboarding = OnboardingModel(
+        let onboarding = OnboardingModel(
             appModel: model,
             launchAtLogin: .system,
             requestNotificationAuthorization: { await notifications.requestAuthorization() }
         )
-        settings = SettingsModel(appModel: model, launchAtLogin: .system)
-        newAlias = NewAliasModel(appModel: model)
-        allAliases = AllAliasesModel(appModel: model)
+        let settings = SettingsModel(appModel: model, launchAtLogin: .system)
+        let newAlias = NewAliasModel(appModel: model)
+        let allAliases = AllAliasesModel(appModel: model)
+        self.onboarding = onboarding
+        self.settings = settings
+        self.newAlias = newAlias
+        self.allAliases = allAliases
+        windows = WindowCoordinator { kind, windows in
+            switch kind {
+            case .onboarding:
+                return NSHostingController.windowContent(
+                    OnboardingView(model: onboarding) { [weak windows] in windows?.close(.onboarding) },
+                    fitsContent: true
+                )
+            case .newAlias:
+                return NSHostingController.windowContent(
+                    NewAliasView(model: newAlias) { [weak windows] in windows?.close(.newAlias) },
+                    fitsContent: true
+                )
+            case .allAliases:
+                return NSHostingController.windowContent(
+                    AllAliasesView(model: allAliases, appModel: model),
+                    fitsContent: false
+                )
+            case .settings:
+                return NSHostingController.windowContent(
+                    SettingsView(appModel: model, settings: settings, onboarding: onboarding) { [weak windows] in
+                        windows?.show(.onboarding)
+                    },
+                    fitsContent: true
+                )
+            }
+        }
         super.init()
     }
 

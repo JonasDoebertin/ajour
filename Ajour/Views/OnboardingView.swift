@@ -2,14 +2,13 @@ import SimpleLoginKit
 import SwiftUI
 
 struct OnboardingView: View {
-    static let windowID = "onboarding"
     private static let apiKeyPage = URL(string: "https://app.simplelogin.io/dashboard/api_key")!
 
     @Bindable var model: OnboardingModel
+    let close: () -> Void
     @State private var clipboardKey: String?
     @State private var launchAtLogin = true
     @Environment(\.openURL) private var openURL
-    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -33,7 +32,7 @@ struct OnboardingView: View {
             offerClipboardKey()
         }
         .onChange(of: model.closesWindow) { _, closesWindow in
-            if closesWindow { dismissWindow(id: Self.windowID) }
+            if closesWindow { close() }
         }
         .onDisappear {
             model.reset()
@@ -114,7 +113,7 @@ struct OnboardingView: View {
             HStack {
                 Spacer()
                 if model.isComplete {
-                    Button("Close") { dismissWindow(id: Self.windowID) }
+                    Button("Close") { close() }
                         .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Done") {
