@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import SimpleLoginKit
 @testable import Ajour
@@ -268,6 +269,17 @@ struct OnboardingModelTests {
 
         #expect(onboarding.progress == nil)
         #expect(!onboarding.canGoBack)
+    }
+
+    @Test func endingAKeyReplacementUpdatesTheProgressOnScreen() {
+        onboarding.beginKeyReplacement()
+        let progressChanged = ChangeFlag()
+        withObservationTracking { _ = onboarding.progress } onChange: { progressChanged.set() }
+
+        onboarding.reset()
+
+        #expect(progressChanged.isSet)
+        #expect(onboarding.progress == OnboardingProgress(step: 1, total: 4))
     }
 
     @Test func backIsOfferedOnlyAfterTheWelcome() async {

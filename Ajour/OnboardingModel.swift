@@ -19,7 +19,7 @@ struct OnboardingProgress: Equatable {
     private(set) var isComplete = false
     private(set) var isFinishing = false
     /// Replacing a key skips the final step, so it can't override the launch-at-login choice made in Settings.
-    @ObservationIgnored private var isReplacingKey = false
+    private var isReplacingKey = false
 
     @ObservationIgnored private let appModel: AppModel
     @ObservationIgnored private let launchAtLogin: LaunchAtLoginControl
