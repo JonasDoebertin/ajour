@@ -15,11 +15,12 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 5. Back returns from the key step to the welcome step and from "Signed In" to the key step. The welcome and final steps have no Back button.
 6. After a relaunch, no onboarding appears, and Settings shows name and email.
 7. Settings > Sign Out asks "Sign Out of Ajour?" with the message "Ajour disables aliases with a running timer, then removes the API key from this Mac." Cancel keeps you signed in. Sign Out returns to onboarding, and a running timer's alias is disabled in the web app.
-8. Settings > Replace API Key… goes straight to the key step, with no progress dots and no Back button, and closes after confirmation.
-9. "Settings…" in the menu, and ⌘, while an Ajour window is in front, both open Settings in front.
-10. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
-11. Copy a key in the browser and switch back: the "API key on clipboard" card with "Use Key from Clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
-12. With ad-hoc signing, the Launch-at-login toggle may show "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items." with an "Open Login Items…" button instead of crashing. The button opens System Settings > General > Login Items.
+8. With Wi-Fi off and a running timer, Sign Out shows "An Alias Is Still Enabled" naming the alias and "SimpleLogin can't be reached". Cancel keeps you signed in. Sign Out Anyway returns to onboarding, and the alias stays enabled in the web app.
+9. Settings > Replace API Key… goes straight to the key step, with no progress dots and no Back button, and closes after confirmation.
+10. "Settings…" in the menu, and ⌘, while an Ajour window is in front, both open Settings in front.
+11. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
+12. Copy a key in the browser and switch back: the "API key on clipboard" card with "Use Key from Clipboard" appears. It may trigger macOS 26's paste-privacy prompt; see concerns.
+13. With ad-hoc signing, the Launch-at-login toggle may show "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items." with an "Open Login Items…" button instead of crashing. The button opens System Settings > General > Login Items.
 
 ## Menu: pinned and timed aliases
 
@@ -48,9 +49,10 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 3. Repeat, using the "Disable Now" button on the notification instead (hover the banner or open the notification's options).
 4. Disable a timed alias from the menu while its "Mail received" notification is still in Notification Center. The notification disappears.
 5. Quit the app while a "Mail received" notification is still in Notification Center, then click it. The app launches and the alias gets disabled.
-6. Turn off Wi-Fi, let a shortened timer expire, and wait 2 minutes. One "Could not disable alias" notification appears. Turn Wi-Fi back on: the alias gets disabled and that notification is withdrawn.
-7. Revoke the API key in the SimpleLogin web app while a timer runs, and let it expire. One "API key invalid" notification appears, and the menu shows "API key invalid – Re-enter Key…". Choose it, enter a valid key, and the menu item disappears while the pending disable runs.
-8. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > Ajour.
+6. Turn off Wi-Fi and let a shortened timer expire. Within seconds, one "Could not disable alias" notification names the reason and offers Try Again. The row reads "Not disabled · retrying". Turn Wi-Fi back on and click Try Again: the alias gets disabled, and the notification and row update.
+7. Sleep the Mac past a timer's end with Wi-Fi off, wake it, and turn Wi-Fi on within 2 minutes: no notification appears, and the alias gets disabled.
+8. Revoke the API key in the SimpleLogin web app while a timer runs, and let it expire. One "API key invalid" notification appears, and the menu shows "API key invalid – Re-enter Key…". Choose it, enter a valid key, and the menu item disappears while the pending disable runs.
+9. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > Ajour.
 
 ## Creating aliases
 

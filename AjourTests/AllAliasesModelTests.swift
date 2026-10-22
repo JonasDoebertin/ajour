@@ -23,7 +23,8 @@ final class AllAliasesModelTests {
             timerStore: timerStore,
             transport: transport,
             now: { clock.now },
-            copyToClipboard: { [weak self] in self?.copied.append($0) }
+            copyToClipboard: { [weak self] in self?.copied.append($0) },
+            retry: .once
         )
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         _ = try await appModel.signIn(apiKey: "valid-key")
@@ -149,7 +150,7 @@ final class AllAliasesModelTests {
     }
 
     @Test func openingWhileSignedOutExplainsThatSetupIsMissing() async {
-        let appModel = AppModel(keyStore: InMemoryAPIKeyStore(), timerStore: timerStore, transport: transport)
+        let appModel = AppModel(keyStore: InMemoryAPIKeyStore(), timerStore: timerStore, transport: transport, retry: .once)
         appModel.start()
         let model = makeModel(appModel: appModel)
 
@@ -437,6 +438,19 @@ final class AllAliasesModelTests {
         let (model, _) = try await test.loadedModel([Fixtures.aliasJSON(id: 2, enabled: true)])
 
         #expect(model.aliases.map { model.status(of: $0).words } == ["3:12 left"])
+    }
+
+    @Test func anAliasWhoseDisableFailsShowsAsFailing() async throws {
+        let test = AllAliasesModelTests(records: [
+            TimerRecord(aliasID: 7, email: "shop@example.com", enabledAt: TestClock().now.addingTimeInterval(-360), expiresAt: TestClock().now.addingTimeInterval(-60)),
+        ])
+        let (model, appModel) = try await test.loadedModel([Fixtures.aliasJSON(id: 7, enabled: true)])
+
+        await appModel.tick()
+
+        #expect(appModel.engine.failures[7] != nil)
+        #expect(model.state(of: try #require(model.aliases.first)) == .disableFailing)
+        #expect(model.aliases.map { model.status(of: $0).line } == ["Not disabled · retrying"])
     }
 
     @Test func aRowWhoseTimerExpiredShowsAsDisabledInTheWindowAndTheMenu() async throws {

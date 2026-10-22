@@ -6,26 +6,35 @@ public struct SimpleLoginAPI: Sendable {
     private let apiKey: String
     private let baseURL: URL
     private let transport: any HTTPTransport
+    private let retry: RetryPolicy
 
-    public init(apiKey: String, baseURL: URL = defaultBaseURL, transport: any HTTPTransport = URLSessionTransport()) {
+    public init(
+        apiKey: String,
+        baseURL: URL = defaultBaseURL,
+        transport: any HTTPTransport = URLSessionTransport(),
+        retry: RetryPolicy = .standard
+    ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.transport = transport
+        self.retry = retry
     }
 
     public func userInfo() async throws -> UserInfo {
         try await send("GET", "/api/user_info")
     }
 
+    /// A request that is not `repeatable` changes something on the server, so it is only tried again when
+    /// it certainly never left this Mac. Otherwise a lost answer could make it happen twice.
     func send<T: Decodable>(
         _ method: String,
         _ path: String,
         query: [URLQueryItem] = [],
-        body: (any Encodable)? = nil
+        body: (any Encodable)? = nil,
+        repeatable: Bool = true
     ) async throws -> T {
         let request = try makeRequest(method, path, query: query, body: body)
-        let (data, response) = try await perform(request)
-        try validate(response, data: data)
+        let data = try await sendWithRetries(request, repeatable: repeatable)
         do {
             return try Self.makeDecoder().decode(T.self, from: data)
         } catch {
@@ -33,6 +42,52 @@ public struct SimpleLoginAPI: Sendable {
         }
     }
 
+    private func sendWithRetries(_ request: URLRequest, repeatable: Bool) async throws -> Data {
+        var attempt = 1
+        while true {
+            do {
+                return try await sendOnce(request)
+            } catch let failure as RequestFailure {
+                let mayRetry = failure.isTransient && (repeatable || failure.neverSent)
+                guard mayRetry, attempt < retry.attempts, (try? await Task.sleep(for: retry.delay)) != nil else {
+                    throw failure.error
+                }
+                attempt += 1
+            }
+        }
+    }
+
+    private func sendOnce(_ request: URLRequest) async throws -> Data {
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            (data, response) = try await transport.send(request)
+        } catch let error as APIError {
+            throw RequestFailure(error: error, isTransient: error.isTransient, neverSent: false)
+        } catch let error as URLError {
+            throw RequestFailure(
+                error: .transport(error.localizedDescription),
+                isTransient: error.code != .cancelled,
+                neverSent: Self.neverSentCodes.contains(error.code)
+            )
+        } catch {
+            throw RequestFailure(error: .transport(error.localizedDescription), isTransient: false, neverSent: false)
+        }
+        do {
+            try validate(response, data: data)
+        } catch let error as APIError {
+            throw RequestFailure(error: error, isTransient: error.isTransient, neverSent: false)
+        }
+        return data
+    }
+
+    /// Failures that happen before any bytes leave this Mac.
+    private static let neverSentCodes: Set<URLError.Code> = [
+        .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed
+    ]
+
+    /// Every request reaches the server: a cached answer could show an alias in a state it has since left,
+    /// and toggling it based on that answer would flip it back.
     private func makeRequest(_ method: String, _ path: String, query: [URLQueryItem], body: (any Encodable)?) throws -> URLRequest {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw APIError.transport("Invalid base URL")
@@ -42,7 +97,7 @@ public struct SimpleLoginAPI: Sendable {
         guard let url = components.url else {
             throw APIError.transport("Invalid request URL")
         }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.setValue(apiKey, forHTTPHeaderField: "Authentication")
         if let body {
@@ -50,16 +105,6 @@ public struct SimpleLoginAPI: Sendable {
             request.httpBody = try Self.makeEncoder().encode(body)
         }
         return request
-    }
-
-    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do {
-            return try await transport.send(request)
-        } catch let error as APIError {
-            throw error
-        } catch {
-            throw APIError.transport(error.localizedDescription)
-        }
     }
 
     private func validate(_ response: HTTPURLResponse, data: Data) throws {
@@ -86,6 +131,12 @@ public struct SimpleLoginAPI: Sendable {
         decoder.dateDecodingStrategy = .secondsSince1970
         return decoder
     }
+}
+
+private struct RequestFailure: Error {
+    let error: APIError
+    let isTransient: Bool
+    let neverSent: Bool
 }
 
 private struct ErrorBody: Decodable {

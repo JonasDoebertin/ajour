@@ -19,7 +19,7 @@ struct OnboardingModelTests {
 
     init(keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(), holdsNotificationPermission: Bool = false) {
         self.keyStore = keyStore
-        appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(), transport: transport)
+        appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(), transport: transport, retry: .once)
         let notificationRequests = notificationRequests
         let notificationPermission = notificationPermission
         onboarding = OnboardingModel(

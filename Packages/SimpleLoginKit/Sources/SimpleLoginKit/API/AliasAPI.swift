@@ -25,7 +25,7 @@ extension SimpleLoginAPI: AliasAPI {
     }
 
     public func toggle(aliasID: Int) async throws -> Bool {
-        let response: ToggleResponse = try await send("POST", "/api/aliases/\(aliasID)/toggle")
+        let response: ToggleResponse = try await send("POST", "/api/aliases/\(aliasID)/toggle", repeatable: false)
         return response.enabled
     }
 
@@ -34,7 +34,7 @@ extension SimpleLoginAPI: AliasAPI {
     }
 
     public func createRandomAlias() async throws -> Alias {
-        try await send("POST", "/api/alias/random/new", body: EmptyBody())
+        try await send("POST", "/api/alias/random/new", body: EmptyBody(), repeatable: false)
     }
 
     public func aliasOptions() async throws -> AliasOptions {
@@ -48,7 +48,7 @@ extension SimpleLoginAPI: AliasAPI {
 
     public func createCustomAlias(prefix: String, signedSuffix: String, mailboxIDs: [Int]) async throws -> Alias {
         let body = CustomAliasBody(aliasPrefix: prefix, signedSuffix: signedSuffix, mailboxIds: mailboxIDs)
-        return try await send("POST", "/api/v3/alias/custom/new", body: body)
+        return try await send("POST", "/api/v3/alias/custom/new", body: body, repeatable: false)
     }
 }
 

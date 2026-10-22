@@ -6,6 +6,18 @@ public enum APIError: Error, Equatable, Sendable {
     case transport(String)
     case decoding(String)
 
+    /// Whether trying again could help: the network failed, or the server was busy or broken for a moment.
+    public var isTransient: Bool {
+        switch self {
+        case .transport:
+            true
+        case .server(let status, _):
+            status == 429 || (500...599).contains(status)
+        case .unauthorized, .decoding:
+            false
+        }
+    }
+
     public var userMessage: String {
         switch self {
         case .unauthorized:

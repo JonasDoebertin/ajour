@@ -26,6 +26,18 @@ struct SettingsView: View {
         } message: {
             Text("Ajour disables aliases with a running timer, then removes the API key from this Mac.")
         }
+        .alert(settings.blockedSignOut?.title ?? "", isPresented: Binding(
+            get: { settings.blockedSignOut != nil },
+            set: { if !$0 { settings.blockedSignOut = nil } }
+        ), presenting: settings.blockedSignOut) { _ in
+            Button("Sign Out Anyway", role: .destructive) {
+                Task { await settings.signOutAnyway() }
+            }
+            Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
+        } message: { error in
+            Text(error.userMessage)
+        }
         .alert("Could Not Sign Out", isPresented: Binding(
             get: { settings.signOutError != nil },
             set: { if !$0 { settings.signOutError = nil } }
@@ -77,7 +89,7 @@ struct SettingsView: View {
                 Button {
                     confirmsSignOut = true
                 } label: {
-                    Text("Sign Out")
+                    Text(settings.isSigningOut ? "Signing Out…" : "Sign Out")
                         .foregroundStyle(Palette.color(Palette.danger))
                 }
                 .disabled(settings.isSigningOut)

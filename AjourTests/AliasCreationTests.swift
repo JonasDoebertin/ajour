@@ -20,7 +20,7 @@ final class AliasCreationTests {
         self.timerStore = timerStore
     }
 
-    func makeModel(disableBudget: Duration = .seconds(5)) -> AppModel {
+    func makeModel() -> AppModel {
         let clock = clock
         let model = AppModel(
             keyStore: InMemoryAPIKeyStore(),
@@ -28,15 +28,15 @@ final class AliasCreationTests {
             transport: transport,
             now: { clock.now },
             copyToClipboard: { [weak self] in self?.copied.append($0) },
-            disableBudget: disableBudget
+            retry: .once
         )
         model.onNewAliasCopied = { [weak self] in self?.announced.append($0) }
         return model
     }
 
-    func signedInModel(disableBudget: Duration = .seconds(5)) async throws -> AppModel {
+    func signedInModel() async throws -> AppModel {
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
-        let model = makeModel(disableBudget: disableBudget)
+        let model = makeModel()
         _ = try await model.signIn(apiKey: "valid-key")
         return model
     }
@@ -173,18 +173,18 @@ final class AliasCreationTests {
         #expect(model.lastError == nil)
     }
 
-    /// Starts creating a random alias that is held at the server, then signs out, giving up on it before it arrives.
+    /// Starts creating a random alias that is held at the server, then signs out anyway, giving up on it before it arrives.
     func createRandomAliasAcrossSignOut(model: AppModel, expiringAfter duration: AliasDuration?) async throws {
         transport.holdNext("/api/alias/random/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
         let create = Task { await model.createRandomAlias(expiringAfter: duration) }
         await transport.waitUntilARequestIsHeld()
-        try await model.signOut()
+        try await model.signOutAnyway()
         transport.release()
         await create.value
     }
 
     @Test func anExpiringRandomAliasCreatedWhileSigningOutIsDisabledWithThePreviousKey() async throws {
-        let model = try await signedInModel(disableBudget: .milliseconds(50))
+        let model = try await signedInModel()
         transport.enqueue("/api/aliases/42", json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
         transport.enqueue("/api/aliases/42/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
 
@@ -199,7 +199,7 @@ final class AliasCreationTests {
     }
 
     @Test func anExpiringRandomAliasCreatedWhileSigningOutSaysWhenItStaysEnabled() async throws {
-        let model = try await signedInModel(disableBudget: .milliseconds(50))
+        let model = try await signedInModel()
 
         try await createRandomAliasAcrossSignOut(model: model, expiringAfter: .fiveMinutes)
 
@@ -208,7 +208,7 @@ final class AliasCreationTests {
     }
 
     @Test func aRandomAliasWithoutExpiryCreatedWhileSigningOutStaysEnabled() async throws {
-        let model = try await signedInModel(disableBudget: .milliseconds(50))
+        let model = try await signedInModel()
 
         try await createRandomAliasAcrossSignOut(model: model, expiringAfter: nil)
 

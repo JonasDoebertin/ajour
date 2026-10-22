@@ -187,14 +187,19 @@ private struct AliasRowActions: View {
                     Task { await model.enablePermanently(alias) }
                 }
             case .timed:
-                Button("Keep Enabled", systemImage: "infinity") {
-                    Task { await model.keepEnabled(alias) }
-                }
-                Menu("Extend", systemImage: "goforward.plus") {
-                    durationButtons { await model.enable(alias, for: $0) }
-                }
+                keepEnabledButton
+                extendMenu
                 Divider()
                 disableButton
+            case .disableFailing:
+                Button("Try Again", systemImage: "arrow.clockwise") {
+                    Task { await model.retryDisable(alias) }
+                }
+                keepEnabledButton
+                extendMenu
+            case .disableRefused:
+                keepEnabledButton
+                Button("Replace API Key…", systemImage: "key") { model.onReplaceAPIKey() }
             case .enabled:
                 Menu("Disable After", systemImage: "timer") {
                     durationButtons { await model.disableAfter(alias, duration: $0) }
@@ -204,6 +209,18 @@ private struct AliasRowActions: View {
             }
         }
         .disabled(isBusy)
+    }
+
+    private var keepEnabledButton: some View {
+        Button("Keep Enabled", systemImage: "infinity") {
+            Task { await model.keepEnabled(alias) }
+        }
+    }
+
+    private var extendMenu: some View {
+        Menu("Extend", systemImage: "goforward.plus") {
+            durationButtons { await model.enable(alias, for: $0) }
+        }
     }
 
     private var disableButton: some View {

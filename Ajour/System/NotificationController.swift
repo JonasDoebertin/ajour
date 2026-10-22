@@ -15,6 +15,8 @@ struct NotificationContent: Equatable {
 enum NotificationIdentifier {
     static let mailReceivedCategory = "MAIL_RECEIVED"
     static let disableNowAction = "DISABLE_NOW"
+    static let disableFailedCategory = "DISABLE_FAILED"
+    static let tryAgainAction = "TRY_AGAIN"
     static let aliasIDKey = "aliasID"
 }
 
@@ -40,18 +42,19 @@ enum NotificationContentFactory {
         switch event {
         case .disabled:
             nil
-        case .disableKeepsFailing(let aliasID, let email):
+        case .disableKeepsFailing(let aliasID, let email, let problem):
             NotificationContent(
-                identifier: "disable-failing-\(aliasID)",
+                identifier: failedDisableIdentifier(aliasID: aliasID),
                 title: "Could not disable alias",
-                body: "\(email) is still enabled. Check your network connection.",
+                body: "\(email) is still enabled. \(reason(for: problem)) Ajour keeps trying.",
+                categoryIdentifier: NotificationIdentifier.disableFailedCategory,
                 aliasID: aliasID
             )
         case .disableForbidden(let aliasID, let email):
             NotificationContent(
                 identifier: "disable-forbidden-\(aliasID)",
                 title: "Could not disable alias",
-                body: "\(email) can't be disabled with the current API key.",
+                body: "The current API key can't change \(email), so it stays enabled. Keep it enabled or use a different key from the menu.",
                 aliasID: aliasID
             )
         case .unauthorized:
@@ -60,6 +63,22 @@ enum NotificationContentFactory {
                 title: "API key invalid",
                 body: "Re-enter your SimpleLogin API key in Settings."
             )
+        }
+    }
+
+    /// The same for every failed disable of an alias, so a new report replaces an earlier one.
+    static func failedDisableIdentifier(aliasID: Int) -> String {
+        "disable-failing-\(aliasID)"
+    }
+
+    private static func reason(for problem: DisableProblem) -> String {
+        switch problem {
+        case .unreachable:
+            "SimpleLogin can't be reached."
+        case .notResponding(let status):
+            "SimpleLogin isn't responding (error \(status))."
+        case .keyRejected, .refused, .other:
+            "SimpleLogin reported an error."
         }
     }
 
@@ -73,6 +92,14 @@ enum NotificationResponseRouter {
     static func aliasToDisable(categoryIdentifier: String, actionIdentifier: String, userInfo: [AnyHashable: Any]) -> Int? {
         guard categoryIdentifier == NotificationIdentifier.mailReceivedCategory,
               [NotificationIdentifier.disableNowAction, UNNotificationDefaultActionIdentifier].contains(actionIdentifier)
+        else { return nil }
+        return userInfo[NotificationIdentifier.aliasIDKey] as? Int
+    }
+
+    /// Both the "Try Again" button and a click on a failed-disable notification retry its alias.
+    static func aliasToRetry(categoryIdentifier: String, actionIdentifier: String, userInfo: [AnyHashable: Any]) -> Int? {
+        guard categoryIdentifier == NotificationIdentifier.disableFailedCategory,
+              [NotificationIdentifier.tryAgainAction, UNNotificationDefaultActionIdentifier].contains(actionIdentifier)
         else { return nil }
         return userInfo[NotificationIdentifier.aliasIDKey] as? Int
     }
@@ -117,12 +144,18 @@ enum NotificationResponseRouter {
 
     private let center: any UserNotificationCenter
     private let onDisableRequested: (Int) -> Void
+    private let onRetryRequested: (Int) -> Void
     /// Notifications about an alias, so they can be withdrawn once it is disabled.
     private var aliasNotificationIdentifiers: [Int: Set<String>] = [:]
 
-    init(center: any UserNotificationCenter = SystemNotificationCenter(), onDisableRequested: @escaping (Int) -> Void) {
+    init(
+        center: any UserNotificationCenter = SystemNotificationCenter(),
+        onDisableRequested: @escaping (Int) -> Void,
+        onRetryRequested: @escaping (Int) -> Void
+    ) {
         self.center = center
         self.onDisableRequested = onDisableRequested
+        self.onRetryRequested = onRetryRequested
     }
 
     /// Must run before the app finishes launching, so a click that launches the app still reaches the delegate.
@@ -134,7 +167,13 @@ enum NotificationResponseRouter {
             actions: [disableNow],
             intentIdentifiers: []
         )
-        center.setNotificationCategories([mailReceived])
+        let tryAgain = UNNotificationAction(identifier: NotificationIdentifier.tryAgainAction, title: "Try Again")
+        let disableFailed = UNNotificationCategory(
+            identifier: NotificationIdentifier.disableFailedCategory,
+            actions: [tryAgain],
+            intentIdentifiers: []
+        )
+        center.setNotificationCategories([mailReceived, disableFailed])
     }
 
     func requestAuthorization() async {
@@ -163,13 +202,28 @@ enum NotificationResponseRouter {
         center.removeDeliveredNotifications(withIdentifiers: Array(identifiers))
     }
 
+    /// Once Ajour stops retrying, "Ajour keeps trying" is no longer true and Try Again would do nothing.
+    /// Mail notifications stay, because the alias is still enabled.
+    func removeFailedDisableNotification(aliasID: Int) {
+        let identifier = NotificationContentFactory.failedDisableIdentifier(aliasID: aliasID)
+        guard aliasNotificationIdentifiers[aliasID]?.remove(identifier) != nil else { return }
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
     nonisolated func handleResponse(categoryIdentifier: String, actionIdentifier: String, userInfo: [AnyHashable: Any]) async {
-        guard let aliasID = NotificationResponseRouter.aliasToDisable(
+        if let aliasID = NotificationResponseRouter.aliasToDisable(
             categoryIdentifier: categoryIdentifier,
             actionIdentifier: actionIdentifier,
             userInfo: userInfo
-        ) else { return }
-        await requestDisable(aliasID: aliasID)
+        ) {
+            await requestDisable(aliasID: aliasID)
+        } else if let aliasID = NotificationResponseRouter.aliasToRetry(
+            categoryIdentifier: categoryIdentifier,
+            actionIdentifier: actionIdentifier,
+            userInfo: userInfo
+        ) {
+            await requestRetry(aliasID: aliasID)
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
@@ -191,6 +245,10 @@ enum NotificationResponseRouter {
 
     private func requestDisable(aliasID: Int) {
         onDisableRequested(aliasID)
+    }
+
+    private func requestRetry(aliasID: Int) {
+        onRetryRequested(aliasID)
     }
 
     private func deliver(_ content: NotificationContent) {

@@ -14,8 +14,11 @@ struct NotificationControllerTests {
         timestamp: Date(timeIntervalSince1970: 1_800_000_000)
     )
 
-    func makeController(onDisableRequested: @escaping (Int) -> Void = { _ in }) -> NotificationController {
-        NotificationController(center: center, onDisableRequested: onDisableRequested)
+    func makeController(
+        onDisableRequested: @escaping (Int) -> Void = { _ in },
+        onRetryRequested: @escaping (Int) -> Void = { _ in }
+    ) -> NotificationController {
+        NotificationController(center: center, onDisableRequested: onDisableRequested, onRetryRequested: onRetryRequested)
     }
 
     @Test func activatingBecomesTheCenterDelegate() {
@@ -34,6 +37,16 @@ struct NotificationControllerTests {
         let category = try #require(center.categories.first { $0.identifier == "MAIL_RECEIVED" })
         #expect(category.actions.map(\.identifier) == ["DISABLE_NOW"])
         #expect(category.actions.map(\.title) == ["Disable Now"])
+    }
+
+    @Test func activatingRegistersTryAgain() throws {
+        let controller = makeController()
+
+        controller.activate()
+
+        let category = try #require(center.categories.first { $0.identifier == "DISABLE_FAILED" })
+        #expect(category.actions.map(\.identifier) == ["TRY_AGAIN"])
+        #expect(category.actions.map(\.title) == ["Try Again"])
     }
 
     @Test func requestingAuthorizationAsksForAlertsAndSounds() async {
@@ -72,7 +85,7 @@ struct NotificationControllerTests {
     @Test func postingAPersistentDisableFailureDeliversANotification() throws {
         let controller = makeController()
 
-        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com"))
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
 
         let request = try #require(center.addedRequests.only)
         #expect(request.content.title == "Could not disable alias")
@@ -129,11 +142,32 @@ struct NotificationControllerTests {
 
     @Test func aDisabledAliasLosesItsStaleDisableFailure() {
         let controller = makeController()
-        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com"))
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
 
         controller.post(.disabled(aliasID: 7, email: "shop@example.com"))
 
         #expect(center.removedIdentifiers == ["disable-failing-7"])
+    }
+
+    @Test func anAliasWhoseDisableIsNoLongerRetriedLosesOnlyItsDisableFailure() {
+        let controller = makeController()
+        controller.post(arrival, turnsOffAt: nil)
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
+
+        controller.removeFailedDisableNotification(aliasID: 7)
+
+        #expect(center.removedIdentifiers == ["disable-failing-7"])
+        controller.removeNotifications(aliasID: 7)
+        #expect(center.removedIdentifiers == ["disable-failing-7", "mail-7-1800000000"])
+    }
+
+    @Test func anAliasWithoutADisableFailureLosesNothingWhenItsRetriesStop() {
+        let controller = makeController()
+        controller.post(arrival, turnsOffAt: nil)
+
+        controller.removeFailedDisableNotification(aliasID: 7)
+
+        #expect(center.removedIdentifiers.isEmpty)
     }
 
     @Test func removedNotificationsAreNotRemovedAgain() {
@@ -154,6 +188,17 @@ struct NotificationControllerTests {
         await controller.handleResponse(categoryIdentifier: "", actionIdentifier: UNNotificationDefaultActionIdentifier, userInfo: [:])
 
         #expect(requestedAliasIDs == [7])
+    }
+
+    @Test func aTryAgainResponseIsForwarded() async {
+        var retriedAliasIDs: [Int] = []
+        var disabledAliasIDs: [Int] = []
+        let controller = makeController(onDisableRequested: { disabledAliasIDs.append($0) }, onRetryRequested: { retriedAliasIDs.append($0) })
+
+        await controller.handleResponse(categoryIdentifier: "DISABLE_FAILED", actionIdentifier: "TRY_AGAIN", userInfo: ["aliasID": 7])
+
+        #expect(retriedAliasIDs == [7])
+        #expect(disabledAliasIDs.isEmpty)
     }
 
     @Test func notificationsShowWhileTheAppIsActive() {

@@ -2,15 +2,46 @@ import AppKit
 import Observation
 import SimpleLoginKit
 
+struct StillEnabledAlias: Equatable {
+    let email: String
+    let problem: DisableProblem
+
+    var reason: String {
+        switch problem {
+        case .unreachable: "SimpleLogin can't be reached"
+        case .notResponding: "SimpleLogin isn't responding"
+        case .refused: "the API key can't change it"
+        case .keyRejected: "the API key was rejected"
+        case .other: "SimpleLogin reported an error"
+        }
+    }
+}
+
 enum SignOutError: Error, Equatable {
-    case aliasesStillEnabled(count: Int)
+    /// Aliases sorted by email, plus the number of enables and creations still running when sign-out gave up waiting.
+    case aliasesStillEnabled([StillEnabledAlias], pendingEnables: Int)
     case timerDataUnreadable
+
+    var title: String {
+        switch self {
+        case .aliasesStillEnabled(let aliases, let pendingEnables):
+            let total = aliases.count + pendingEnables
+            return total == 1 ? "An Alias Is Still Enabled" : "\(total) Aliases Are Still Enabled"
+        case .timerDataUnreadable:
+            return "Could Not Sign Out"
+        }
+    }
 
     var userMessage: String {
         switch self {
-        case .aliasesStillEnabled(let count):
-            let aliases = count == 1 ? "1 alias is" : "\(count) aliases are"
-            return "\(aliases) still enabled. Check your connection and try again."
+        case .aliasesStillEnabled(let aliases, let pendingEnables):
+            var lines = aliases.map { "\($0.email): \($0.reason)" }
+            if pendingEnables > 0 {
+                let pending = pendingEnables == 1 ? "1 alias" : "\(pendingEnables) aliases"
+                lines.append("\(pending) being enabled or created right now")
+            }
+            let consequence = aliases.count + pendingEnables == 1 ? "it stays" : "these aliases stay"
+            return lines.joined(separator: "\n") + "\n\nIf you sign out anyway, \(consequence) enabled."
         case .timerDataUnreadable:
             return "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases."
         }
@@ -52,16 +83,22 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored var onMailArrivals: ([MailArrival]) -> Void = { _ in }
     /// Called for each alias as soon as the app has disabled it.
     @ObservationIgnored var onAliasDisabled: (Int) -> Void = { _ in }
+    /// Called for each alias whose failed disable stops being retried while the alias stays enabled.
+    @ObservationIgnored var onDisableRetriesStopped: (Int) -> Void = { _ in }
     @ObservationIgnored var onNewAliasCopied: (String) -> Void = { _ in }
     /// Set when timed disables stop because the server rejected the key, until a new key is saved.
     private(set) var apiKeyInvalid = false
 
     @ObservationIgnored private let keyStore: any APIKeyStoring
     @ObservationIgnored private let transport: any HTTPTransport
+    @ObservationIgnored private let retry: RetryPolicy
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let copyToClipboard: @MainActor (String) -> Void
-    /// How long quit and sign-out try to disable aliases before giving up.
+    /// How long quit tries to disable aliases before giving up.
     @ObservationIgnored private let disableBudget: Duration
+    /// How long sign-out waits for enables and tries to disable aliases before giving up. Longer than quit's,
+    /// because the person is watching it and giving up keeps them signed in.
+    @ObservationIgnored private let signOutBudget: Duration
     @ObservationIgnored private var lastActivityPollAt: Date?
     /// Changes whenever the API key changes or is removed, so work bound to one key can restart.
     private(set) var session = 0
@@ -73,7 +110,6 @@ enum AliasActionError: Error, Equatable {
     /// Counts enabled changes; a list remembers it when it loads, to tell older changes from newer ones.
     @ObservationIgnored private(set) var enabledChangeSequence = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
-    @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
     /// Set once quitting starts, so no tick work starts and nothing more is forwarded.
@@ -85,6 +121,8 @@ enum AliasActionError: Error, Equatable {
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
     private static let pinnedRefreshInterval: Duration = .seconds(60)
+    /// How long after launch or wake failed disables stay unreported, while the network settles.
+    private static let quietPeriodAfterLaunchOrWake: TimeInterval = 120
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
@@ -92,16 +130,21 @@ enum AliasActionError: Error, Equatable {
         transport: any HTTPTransport = URLSessionTransport(session: URLSession(configuration: sessionConfiguration())),
         now: @escaping @Sendable () -> Date = Date.init,
         copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy,
-        disableBudget: Duration = .seconds(5)
+        disableBudget: Duration = .seconds(5),
+        signOutBudget: Duration = .seconds(30),
+        retry: RetryPolicy = .standard
     ) {
         self.keyStore = keyStore
         self.transport = transport
+        self.retry = retry
         currentDate = now
         self.copyToClipboard = copyToClipboard
         self.disableBudget = disableBudget
+        self.signOutBudget = signOutBudget
         self.now = now()
-        engine = TimerEngine(store: timerStore, now: now)
+        engine = TimerEngine(store: timerStore, now: now, retry: retry)
         engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
+        engine.onDisableRetriesStopped = { [weak self] in self?.onDisableRetriesStopped($0) }
     }
 
     /// A request on a dead connection, for example right after wake, gives up after 15 seconds instead of
@@ -117,12 +160,13 @@ enum AliasActionError: Error, Equatable {
     func start() -> Task<Void, Never>? {
         var accountLoad: Task<Void, Never>?
         if let key = try? keyStore.load() {
-            connect(SimpleLoginAPI(apiKey: key, transport: transport))
+            connect(SimpleLoginAPI(apiKey: key, transport: transport, retry: retry))
             phase = .signedIn(nil)
             accountLoad = Task { await loadUserInfo() }
         } else {
             phase = .signedOut
         }
+        deferFailureReports()
         startTickLoop()
         observeWake()
         return accountLoad
@@ -148,7 +192,7 @@ enum AliasActionError: Error, Equatable {
 
     /// Only a key the server accepts is saved, so a typo never replaces a working key.
     func signIn(apiKey: String) async throws -> UserInfo {
-        let candidate = SimpleLoginAPI(apiKey: apiKey, transport: transport)
+        let candidate = SimpleLoginAPI(apiKey: apiKey, transport: transport, retry: retry)
         let userInfo = try await candidate.userInfo()
         try keyStore.save(apiKey)
         connect(candidate)
@@ -158,15 +202,53 @@ enum AliasActionError: Error, Equatable {
     }
 
     /// Timed aliases are disabled first: without the key, nothing could disable them later.
+    /// Throws what stays enabled, so the person can sign out anyway.
     func signOut() async throws {
         guard engine.loadError == nil else { throw SignOutError.timerDataUnreadable }
-        guard await disableEverything() else {
-            throw SignOutError.aliasesStillEnabled(count: engine.records.count)
+        switch await disableEverything(within: signOutBudget) {
+        case .timerDataUnreadable:
+            throw SignOutError.timerDataUnreadable
+        case .allDisabled where enablesInFlight == 0:
+            break
+        case .allDisabled:
+            throw SignOutError.aliasesStillEnabled([], pendingEnables: enablesInFlight)
+        case .stillEnabled(let problems):
+            throw SignOutError.aliasesStillEnabled(stillEnabledAliases(problems), pendingEnables: enablesInFlight)
         }
+        try removeAccount()
+    }
+
+    /// Leaves aliases that stay enabled as they are: their timers are forgotten, because without the key
+    /// nothing could disable them. Stops before removing the key if the timers can't be forgotten, and tracks
+    /// the timers again if the key can't be removed, so a person who stays signed in keeps every timer.
+    func signOutAnyway() async throws {
+        let discarded: DiscardedTimers
+        do {
+            discarded = try engine.discardAll()
+        } catch {
+            throw SignOutError.timerDataUnreadable
+        }
+        do {
+            try removeAccount()
+        } catch {
+            try? engine.restore(discarded)
+            throw error
+        }
+    }
+
+    private func removeAccount() throws {
         try keyStore.delete()
         connect(nil)
         pinned = []
         phase = .signedOut
+    }
+
+    private func stillEnabledAliases(_ problems: [Int: DisableProblem]) -> [StillEnabledAlias] {
+        problems
+            .compactMap { aliasID, problem in
+                engine.record(for: aliasID).map { StillEnabledAlias(email: $0.email, problem: problem) }
+            }
+            .sorted { $0.email.localizedStandardCompare($1.email) == .orderedAscending }
     }
 
     /// Replaces the list only once every page has loaded, so a failure keeps the last complete list.
@@ -195,7 +277,7 @@ enum AliasActionError: Error, Equatable {
     }
 
     var menuSections: MenuSections {
-        MenuSections.make(pinned: pinned, records: engine.records, now: now)
+        MenuSections.make(pinned: pinned, records: engine.records, failures: engine.failures, now: now)
     }
 
     func menuState(at date: Date) -> MenuState {
@@ -204,9 +286,9 @@ enum AliasActionError: Error, Equatable {
             lastError: lastError,
             apiKeyInvalid: apiKeyInvalid,
             timerDataUnreadable: engine.loadError != nil,
-            sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
+            sections: MenuSections.make(pinned: pinned, records: engine.records, failures: engine.failures, now: date),
             pinnedLoaded: pinnedLoaded,
-            activities: activities,
+            activities: activities.merging(engine.disablingAliasIDs.map { ($0, .disabling) }) { own, _ in own },
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
@@ -240,7 +322,9 @@ enum AliasActionError: Error, Equatable {
         await whileEnabling {
             await perform(on: aliasID, activity: .updating) {
                 guard let api else { throw TimerEngineError.notSignedIn }
+                let session = self.session
                 let alias = try await api.alias(id: aliasID)
+                guard session == self.session else { throw TimerEngineError.accountChanged }
                 guard alias.enabled else {
                     recordEnabled(false, aliasID: aliasID)
                     throw AliasActionError.alreadyDisabled(email: alias.email)
@@ -286,7 +370,7 @@ enum AliasActionError: Error, Equatable {
     func enablePermanently(aliasID: Int) async -> Bool {
         await perform(on: aliasID, activity: .enabling) {
             guard let api else { throw TimerEngineError.notSignedIn }
-            _ = try await AliasSwitch(api: api).ensureEnabled(aliasID: aliasID)
+            _ = try await AliasSwitch(api: api, retry: retry).ensureEnabled(aliasID: aliasID)
             recordEnabled(true, aliasID: aliasID)
         }
     }
@@ -312,7 +396,13 @@ enum AliasActionError: Error, Equatable {
     }
 
     func activity(aliasID: Int) -> AliasActivity? {
-        activities[aliasID]
+        activities[aliasID] ?? (engine.disablingAliasIDs.contains(aliasID) ? .disabling : nil)
+    }
+
+    /// Retries a failed disable now instead of at its next scheduled attempt.
+    func retryDisable(aliasID: Int) async {
+        engine.retryNow(aliasID: aliasID)
+        await tick()
     }
 
     func isBusy(aliasID: Int) -> Bool {
@@ -344,13 +434,13 @@ enum AliasActionError: Error, Equatable {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
         }
-        _ = await disableEverything()
+        _ = await disableEverything(within: disableBudget)
     }
 
     /// Lets enables in flight save their timers first, so the aliases they enable are disabled too.
     /// Waiting and disabling share one budget.
-    private func disableEverything() async -> Bool {
-        let deadline = ContinuousClock.now + disableBudget
+    private func disableEverything(within budget: Duration) async -> DisableAllOutcome {
+        let deadline = ContinuousClock.now + budget
         await waitForEnablesInFlight(until: deadline)
         return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now))
     }
@@ -389,8 +479,9 @@ enum AliasActionError: Error, Equatable {
         }
     }
 
-    /// Entry point for the tick loop and wake. Expiry processing and activity polling each run at most once
-    /// at a time and independently, so a slow poll never holds back a due disable.
+    /// Entry point for the tick loop and wake. Expiry processing and activity polling run independently, so a slow
+    /// poll never holds back a due disable. Activity polling runs at most once at a time. Expiry processing starts
+    /// whenever an alias is due, even while earlier disables still run, so a slow disable never holds back another.
     @discardableResult
     func scheduleTick() -> [Task<Void, Never>] {
         guard !isShuttingDown else { return [] }
@@ -399,16 +490,13 @@ enum AliasActionError: Error, Equatable {
     }
 
     private func startDueProcessingIfNeeded() -> Task<Void, Never>? {
-        guard dueProcessing == nil, let dueDate = engine.nextDueDate(), dueDate <= now else { return nil }
-        let work = Task {
+        guard let dueDate = engine.nextDueDate(), dueDate <= now else { return nil }
+        return Task {
             let events = await engine.processDue()
-            dueProcessing = nil
             guard !events.isEmpty, !isShuttingDown else { return }
             if events.contains(.unauthorized) { apiKeyInvalid = true }
             onTimerEvents(events)
         }
-        dueProcessing = work
-        return work
     }
 
     private func startActivityPollIfNeeded() -> Task<Void, Never>? {
@@ -441,8 +529,17 @@ enum AliasActionError: Error, Equatable {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleTick() }
+            Task { @MainActor in self?.didWake() }
         }
+    }
+
+    func didWake() {
+        deferFailureReports()
+        scheduleTick()
+    }
+
+    private func deferFailureReports() {
+        engine.failureReportsResumeAt = currentDate().addingTimeInterval(Self.quietPeriodAfterLaunchOrWake)
     }
 
     private var isActivityPollDue: Bool {
@@ -478,6 +575,8 @@ enum AliasActionError: Error, Equatable {
             try await action()
             lastError = nil
             return true
+        } catch TimerEngineError.accountChanged {
+            return false
         } catch {
             fail(with: error)
             return false
@@ -510,7 +609,7 @@ enum AliasActionError: Error, Equatable {
     private func abandonAfterAccountChange(_ alias: Alias, using api: SimpleLoginAPI, wasToExpire: Bool) async -> AliasCreationError {
         guard wasToExpire else { return .accountChanged(email: alias.email) }
         do {
-            _ = try await AliasSwitch(api: api).ensureDisabled(aliasID: alias.id)
+            _ = try await AliasSwitch(api: api, retry: retry).ensureDisabled(aliasID: alias.id)
             return .disabledAfterAccountChange(email: alias.email)
         } catch {
             return .stillEnabledAfterAccountChange(email: alias.email)

@@ -14,11 +14,12 @@ struct SettingsModelTests {
     init(
         keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(),
         records: [TimerRecord] = [],
+        timerStore: (any TimerStore)? = nil,
         launchAtLogin: FakeLaunchAtLogin = FakeLaunchAtLogin()
     ) {
         self.keyStore = keyStore
         self.launchAtLogin = launchAtLogin
-        appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(records: records), transport: transport)
+        appModel = AppModel(keyStore: keyStore, timerStore: timerStore ?? InMemoryTimerStore(records: records), transport: transport, retry: .once)
         settings = SettingsModel(appModel: appModel, launchAtLogin: launchAtLogin.control)
     }
 
@@ -132,16 +133,66 @@ struct SettingsModelTests {
         #expect(!test.settings.isSigningOut)
     }
 
-    @Test func aBlockedSignOutExplainsWhy() async throws {
-        let now = Date()
-        let record = TimerRecord(aliasID: 7, email: "shop@example.com", enabledAt: now, expiresAt: now.addingTimeInterval(300))
-        let test = SettingsModelTests(records: [record])
+    @Test func aBlockedSignOutOffersSigningOutAnyway() async throws {
+        let test = SettingsModelTests(records: [.running(aliasID: 7)])
         try await test.signIn()
 
         await test.settings.signOut()
 
         #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
-        #expect(test.settings.signOutError == "1 alias is still enabled. Check your connection and try again.")
+        #expect(test.settings.signOutError == nil)
+        #expect(test.settings.blockedSignOut == .aliasesStillEnabled(
+            [StillEnabledAlias(email: "shop@example.com", problem: .unreachable)],
+            pendingEnables: 0
+        ))
+    }
+
+    @Test func signingOutAnywaySignsOut() async throws {
+        let test = SettingsModelTests(records: [.running(aliasID: 7)])
+        try await test.signIn()
+        await test.settings.signOut()
+
+        await test.settings.signOutAnyway()
+
+        #expect(test.appModel.phase == .signedOut)
+        #expect(test.settings.blockedSignOut == nil)
+        #expect(test.settings.signOutError == nil)
+        #expect(!test.settings.isSigningOut)
+    }
+
+    @Test func signingOutAnywayThatCannotForgetTheTimersExplainsWhy() async throws {
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)], failsToSave: true)
+        let test = SettingsModelTests(timerStore: timerStore)
+        try await test.signIn()
+
+        await test.settings.signOutAnyway()
+
+        #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
+        #expect(test.keyStore.key == "valid-key")
+        #expect(test.settings.signOutError == SignOutError.timerDataUnreadable.userMessage)
+    }
+
+    @Test func signingOutAnywayThatCannotRemoveTheKeyExplainsWhyAndKeepsTheTimers() async throws {
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)])
+        let test = SettingsModelTests(keyStore: InMemoryAPIKeyStore(failsToDelete: true), timerStore: timerStore)
+        try await test.signIn()
+
+        await test.settings.signOutAnyway()
+
+        #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
+        #expect(test.settings.signOutError == "The API key could not be removed from the Keychain.")
+        #expect(test.appModel.engine.records.map(\.aliasID) == [7])
+        #expect(timerStore.records.map(\.aliasID) == [7])
+    }
+
+    @Test func unreadableTimerDataKeepsTheCouldNotSignOutAlert() async throws {
+        let test = SettingsModelTests(timerStore: UnavailableTimerStore(reason: "test"))
+        try await test.signIn()
+
+        await test.settings.signOut()
+
+        #expect(test.settings.signOutError == SignOutError.timerDataUnreadable.userMessage)
+        #expect(test.settings.blockedSignOut == nil)
     }
 
     @Test func aKeychainFailureDuringSignOutIsExplained() async throws {
@@ -151,5 +202,12 @@ struct SettingsModelTests {
         await test.settings.signOut()
 
         #expect(test.settings.signOutError == "The API key could not be removed from the Keychain.")
+    }
+}
+
+private extension TimerRecord {
+    static func running(aliasID: Int) -> TimerRecord {
+        let now = Date()
+        return TimerRecord(aliasID: aliasID, email: "shop@example.com", enabledAt: now, expiresAt: now.addingTimeInterval(300))
     }
 }

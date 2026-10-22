@@ -4,6 +4,10 @@ public enum AliasMenuState: Equatable, Sendable {
     case disabled
     case enabled
     case timed(remaining: TimeInterval, endsAt: Date, length: TimeInterval)
+    /// The timer ran out, but switching the alias off keeps failing and Ajour keeps trying.
+    case disableFailing
+    /// The timer ran out, but the current API key may not switch the alias off.
+    case disableRefused
 }
 
 public struct MenuAliasItem: Equatable, Sendable, Identifiable {
@@ -27,32 +31,34 @@ public struct MenuSections: Equatable, Sendable {
         self.pinned = pinned
     }
 
-    public static func make(pinned: [Alias], records: [TimerRecord], now: Date) -> MenuSections {
+    public static func make(pinned: [Alias], records: [TimerRecord], failures: [Int: DisableFailure], now: Date) -> MenuSections {
         let recordsByAliasID = Dictionary(records.map { ($0.aliasID, $0) }, uniquingKeysWith: { first, _ in first })
         let pinnedIDs = Set(pinned.map(\.id))
 
         let pinnedItems = pinned.map { alias in
-            MenuAliasItem(id: alias.id, email: alias.email, state: state(of: alias, record: recordsByAliasID[alias.id], now: now))
+            let timerState = recordsByAliasID[alias.id].map { state(of: $0, failure: failures[alias.id], now: now) }
+            return MenuAliasItem(id: alias.id, email: alias.email, state: timerState ?? (alias.enabled ? .enabled : .disabled))
         }
         let timedUnpinnedItems = records
             .filter { !pinnedIDs.contains($0.aliasID) }
             .sorted { $0.expiresAt < $1.expiresAt }
-            .map { MenuAliasItem(id: $0.aliasID, email: $0.email, state: timedState(of: $0, now: now)) }
+            .map { MenuAliasItem(id: $0.aliasID, email: $0.email, state: state(of: $0, failure: failures[$0.aliasID], now: now)) }
 
         return MenuSections(timedUnpinned: timedUnpinnedItems, pinned: pinnedItems)
     }
 
-    private static func state(of alias: Alias, record: TimerRecord?, now: Date) -> AliasMenuState {
-        if let record { return timedState(of: record, now: now) }
-        return alias.enabled ? .enabled : .disabled
-    }
-
-    private static func timedState(of record: TimerRecord, now: Date) -> AliasMenuState {
-        .timed(
-            remaining: max(0, record.expiresAt.timeIntervalSince(now)),
-            endsAt: record.expiresAt,
-            length: record.expiresAt.timeIntervalSince(record.enabledAt)
-        )
+    /// A rejected key leaves the alias timed, because the app-wide key notice already says what to do.
+    public static func state(of record: TimerRecord, failure: DisableFailure?, now: Date) -> AliasMenuState {
+        switch failure {
+        case .transient: .disableFailing
+        case .forbidden: .disableRefused
+        case .unauthorized, nil:
+            .timed(
+                remaining: max(0, record.expiresAt.timeIntervalSince(now)),
+                endsAt: record.expiresAt,
+                length: record.expiresAt.timeIntervalSince(record.enabledAt)
+            )
+        }
     }
 }
 

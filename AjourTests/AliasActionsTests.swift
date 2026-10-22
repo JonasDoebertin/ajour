@@ -26,7 +26,8 @@ struct AliasActionsTests {
             transport: transport,
             now: { clock.now },
             copyToClipboard: copyToClipboard,
-            disableBudget: disableBudget
+            disableBudget: disableBudget,
+            retry: .once
         )
     }
 
@@ -46,6 +47,15 @@ struct AliasActionsTests {
 
     func runningRecord(aliasID: Int) -> TimerRecord {
         TimerRecord(aliasID: aliasID, email: "shop@example.com", enabledAt: clock.now.addingTimeInterval(-10), expiresAt: clock.now.addingTimeInterval(290))
+    }
+
+    /// A signed-in model whose disable of the alias failed at expiry and is being retried.
+    func modelWithFailingDisable(aliasID: Int) async throws -> AppModel {
+        let expired = TimerRecord(aliasID: aliasID, email: "shop@example.com", enabledAt: clock.now.addingTimeInterval(-360), expiresAt: clock.now.addingTimeInterval(-60))
+        let test = AliasActionsTests(records: [expired])
+        let model = try await test.signedInModel(pinned: [Fixtures.aliasJSON(id: aliasID, enabled: true)])
+        await model.tick()
+        return model
     }
 
     @Test func enableTurnsOnADisabledAliasAndShowsItAsTimed() async throws {
@@ -387,6 +397,36 @@ struct AliasActionsTests {
 
         #expect(succeeded == false)
         #expect(requestCount(path: "/api/aliases/7") == 1)
+    }
+
+    @Test func keepEnabledReportsThatAFailedDisableIsNoLongerRetried() async throws {
+        let model = try await modelWithFailingDisable(aliasID: 7)
+        var stoppedAliasIDs: [Int] = []
+        model.onDisableRetriesStopped = { stoppedAliasIDs.append($0) }
+
+        await model.keepEnabled(aliasID: 7, email: "shop@example.com")
+
+        #expect(stoppedAliasIDs == [7])
+    }
+
+    @Test func extendReportsThatAFailedDisableIsNoLongerRetried() async throws {
+        let model = try await modelWithFailingDisable(aliasID: 7)
+        var stoppedAliasIDs: [Int] = []
+        model.onDisableRetriesStopped = { stoppedAliasIDs.append($0) }
+
+        model.extend(aliasID: 7, by: .fiveMinutes)
+
+        #expect(stoppedAliasIDs == [7])
+    }
+
+    @Test func extendFromAllAliasesReportsThatAFailedDisableIsNoLongerRetried() async throws {
+        let model = try await modelWithFailingDisable(aliasID: 7)
+        var stoppedAliasIDs: [Int] = []
+        model.onDisableRetriesStopped = { stoppedAliasIDs.append($0) }
+
+        await model.enable(aliasID: 7, for: .fiveMinutes)
+
+        #expect(stoppedAliasIDs == [7])
     }
 
     @Test func keepEnabledStopsTheTimerAndLeavesTheAliasEnabled() async throws {

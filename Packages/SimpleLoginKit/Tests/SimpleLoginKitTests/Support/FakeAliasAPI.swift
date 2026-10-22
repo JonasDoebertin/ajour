@@ -5,6 +5,8 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     private let lock = NSLock()
     private var storedAliases: [Int: Alias]
     private var storedErrors: [Error] = []
+    private var storedToggleErrors: [Error] = []
+    private var storedToggleErrorsAfterApplying: [Error] = []
     private var storedToggleCalls: [Int] = []
     private var storedAliasCalls: [Int] = []
 
@@ -20,6 +22,18 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     var errors: [Error] {
         get { lock.withLock { storedErrors } }
         set { lock.withLock { storedErrors = newValue } }
+    }
+
+    /// Thrown by `toggle` before it flips the alias, like a request that never arrived.
+    var toggleErrors: [Error] {
+        get { lock.withLock { storedToggleErrors } }
+        set { lock.withLock { storedToggleErrors = newValue } }
+    }
+
+    /// Thrown by `toggle` after it flipped the alias, like a response that never made it back.
+    var toggleErrorsAfterApplying: [Error] {
+        get { lock.withLock { storedToggleErrorsAfterApplying } }
+        set { lock.withLock { storedToggleErrorsAfterApplying = newValue } }
     }
 
     var toggleCalls: [Int] {
@@ -44,6 +58,9 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     func toggle(aliasID: Int) async throws -> Bool {
         try lock.withLock {
             try popError()
+            if !storedToggleErrors.isEmpty {
+                throw storedToggleErrors.removeFirst()
+            }
             storedToggleCalls.append(aliasID)
             guard let alias = storedAliases[aliasID] else {
                 throw APIError.server(status: 404, message: "Alias not found")
@@ -61,6 +78,9 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
                 mailboxes: alias.mailboxes
             )
             storedAliases[aliasID] = flipped
+            if !storedToggleErrorsAfterApplying.isEmpty {
+                throw storedToggleErrorsAfterApplying.removeFirst()
+            }
             return flipped.enabled
         }
     }

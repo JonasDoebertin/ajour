@@ -35,6 +35,9 @@ enum EmptyState: Equatable {
     @ObservationIgnored private var totalGeneration = 0
     @ObservationIgnored private var pendingSearch: Task<Void, Never>?
 
+    /// Opens the window where the API key is replaced; set once the windows exist.
+    @ObservationIgnored var onReplaceAPIKey: () -> Void = {}
+
     @ObservationIgnored private let appModel: AppModel
     @ObservationIgnored private let sleep: @MainActor (Duration) async throws -> Void
 
@@ -118,11 +121,7 @@ enum EmptyState: Equatable {
     /// A running timer, or a change the app made after the row loaded, wins over the row's enabled flag.
     func state(of alias: Alias) -> AliasMenuState {
         if let record = appModel.engine.record(for: alias.id) {
-            return .timed(
-                remaining: max(0, record.expiresAt.timeIntervalSince(appModel.now)),
-                endsAt: record.expiresAt,
-                length: record.expiresAt.timeIntervalSince(record.enabledAt)
-            )
+            return MenuSections.state(of: record, failure: appModel.engine.failures[alias.id], now: appModel.now)
         }
         let enabled = appModel.knownEnabled(aliasID: alias.id, since: listStartSequence) ?? alias.enabled
         return enabled ? .enabled : .disabled
@@ -212,6 +211,10 @@ enum EmptyState: Equatable {
 
     func keepEnabled(_ alias: Alias) async {
         await appModel.keepEnabled(aliasID: alias.id, email: alias.email)
+    }
+
+    func retryDisable(_ alias: Alias) async {
+        await appModel.retryDisable(aliasID: alias.id)
     }
 
     func disable(_ alias: Alias) async {

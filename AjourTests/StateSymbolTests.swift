@@ -3,7 +3,7 @@ import Testing
 @testable import Ajour
 
 struct StateSymbolTests {
-    private let allKinds: [AliasStatus.Kind] = [.enabled, .disabled, .timed(shareLeft: 0.4), .busy]
+    private let allKinds: [AliasStatus.Kind] = [.enabled, .disabled, .timed(shareLeft: 0.4), .busy, .stuck]
 
     @Test func symbolsAreSixteenPoints() {
         for kind in allKinds {
@@ -54,6 +54,21 @@ struct StateSymbolTests {
         #expect(try pixel(of: busy, x: 7, y: 32).alphaComponent == 1)
         #expect(try pixel(of: busy, x: 32, y: 57).alphaComponent == 1)
         #expect(try pixel(of: busy, x: 52, y: 12).alphaComponent == 0)
+    }
+
+    @Test func stuckSymbolIsDangerColoredWithAnExclamationMark() throws {
+        let stuck = StateSymbol.image(for: .stuck, highlighted: false)
+        let bar = try pixel(of: stuck, x: 32, y: 22)
+        let dot = try pixel(of: stuck, x: 32, y: 40)
+        var danger = NSColor.clear
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance { danger = Palette.danger.usingColorSpace(.sRGB) ?? .clear }
+        #expect(bar.alphaComponent == 1)
+        #expect(dot.alphaComponent == 1)
+        #expect(abs(bar.redComponent - danger.redComponent) < 0.03)
+        #expect(abs(bar.greenComponent - danger.greenComponent) < 0.03)
+        #expect(abs(bar.blueComponent - danger.blueComponent) < 0.03)
+        #expect(try pixel(of: stuck, x: 20, y: 32).alphaComponent == 0)
+        #expect(try pixel(of: stuck, x: 7, y: 32).alphaComponent == 1)
     }
 
     /// Renders the image at 4× into a bitmap; `x` and `y` count pixels from the top left.

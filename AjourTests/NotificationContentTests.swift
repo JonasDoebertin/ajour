@@ -70,27 +70,39 @@ struct NotificationContentFactoryTests {
         #expect(identifiers[0] != identifiers[1])
     }
 
-    @Test func failingDisableAsksToCheckTheNetwork() throws {
-        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "signups@alexmorgan.example")))
+    @Test func aFailingDisableNamesTheReasonAndKeepsTrying() throws {
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable)))
 
-        #expect(content.body == "signups@alexmorgan.example is still enabled. Check your network connection.")
-    }
-
-    @Test func persistentDisableFailureSaysTheAliasIsStillEnabled() throws {
-        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com")))
-
+        #expect(content.identifier == "disable-failing-7")
         #expect(content.title == "Could not disable alias")
-        #expect(content.body == "shop@example.com is still enabled. Check your network connection.")
-        #expect(content.categoryIdentifier == "")
+        #expect(content.body == "shop@example.com is still enabled. SimpleLogin can't be reached. Ajour keeps trying.")
         #expect(content.aliasID == 7)
     }
 
-    @Test func forbiddenDisableSaysTheCurrentKeyCannotDisableTheAlias() throws {
+    @Test func aServerErrorNamesItsStatus() throws {
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .notResponding(status: 503))))
+
+        #expect(content.body == "shop@example.com is still enabled. SimpleLogin isn't responding (error 503). Ajour keeps trying.")
+    }
+
+    @Test func anUnexpectedErrorIsNamedGenerally() throws {
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .other)))
+
+        #expect(content.body == "shop@example.com is still enabled. SimpleLogin reported an error. Ajour keeps trying.")
+    }
+
+    @Test func aFailingDisableOffersTryAgain() throws {
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable)))
+
+        #expect(content.categoryIdentifier == "DISABLE_FAILED")
+    }
+
+    @Test func aRefusedDisableExplainsTheWayOut() throws {
         let content = try #require(NotificationContentFactory.content(for: .disableForbidden(aliasID: 7, email: "shop@example.com")))
 
-        #expect(content.title == "Could not disable alias")
-        #expect(content.body == "shop@example.com can't be disabled with the current API key.")
         #expect(content.identifier == "disable-forbidden-7")
+        #expect(content.title == "Could not disable alias")
+        #expect(content.body == "The current API key can't change shop@example.com, so it stays enabled. Keep it enabled or use a different key from the menu.")
         #expect(content.categoryIdentifier == "")
         #expect(content.aliasID == 7)
     }
@@ -171,5 +183,41 @@ struct NotificationResponseRouterTests {
 
         #expect(missing == nil)
         #expect(malformed == nil)
+    }
+
+    @Test func tryAgainRetriesTheAlias() {
+        let aliasID = NotificationResponseRouter.aliasToRetry(
+            categoryIdentifier: "DISABLE_FAILED",
+            actionIdentifier: "TRY_AGAIN",
+            userInfo: ["aliasID": 7]
+        )
+
+        #expect(aliasID == 7)
+    }
+
+    @Test func clickingAFailedDisableRetriesTheAlias() {
+        let aliasID = NotificationResponseRouter.aliasToRetry(
+            categoryIdentifier: "DISABLE_FAILED",
+            actionIdentifier: UNNotificationDefaultActionIdentifier,
+            userInfo: ["aliasID": 7]
+        )
+
+        #expect(aliasID == 7)
+    }
+
+    @Test func tryAgainDisablesNothingElse() {
+        let disabled = NotificationResponseRouter.aliasToDisable(
+            categoryIdentifier: "DISABLE_FAILED",
+            actionIdentifier: "TRY_AGAIN",
+            userInfo: ["aliasID": 7]
+        )
+        let retried = NotificationResponseRouter.aliasToRetry(
+            categoryIdentifier: "MAIL_RECEIVED",
+            actionIdentifier: "DISABLE_NOW",
+            userInfo: ["aliasID": 7]
+        )
+
+        #expect(disabled == nil)
+        #expect(retried == nil)
     }
 }

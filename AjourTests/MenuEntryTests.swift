@@ -260,6 +260,46 @@ struct MenuEntryTests {
         ])
     }
 
+    private let failingItem = MenuAliasItem(id: 7, email: "shop@example.com", state: .disableFailing)
+    private let refusedItem = MenuAliasItem(id: 7, email: "shop@example.com", state: .disableRefused)
+    private let keepEnabled = MenuEntry.action("Keep Enabled", .keepEnabled(aliasID: 7, email: "shop@example.com"), symbol: "infinity")
+
+    @Test func aFailingAliasOffersTryAgainKeepOrExtend() {
+        #expect(children(of: entry(for: failingItem)) == [
+            copyAddress,
+            .separator,
+            .action("Try Again", .retryDisable(aliasID: 7), symbol: "arrow.clockwise"),
+            keepEnabled,
+            .submenu("Extend", [
+                .header("Extend By"),
+                .action("5 Minutes", .extend(aliasID: 7, duration: .fiveMinutes), symbol: "timer"),
+                .action("1 Hour", .extend(aliasID: 7, duration: .oneHour)),
+                .action("24 Hours", .extend(aliasID: 7, duration: .twentyFourHours)),
+            ], symbol: "goforward.plus"),
+        ])
+    }
+
+    @Test func aRefusedAliasOffersKeepOrReplacingTheKey() {
+        #expect(children(of: entry(for: refusedItem)) == [
+            copyAddress,
+            .separator,
+            keepEnabled,
+            .action("Replace API Key…", .reEnterAPIKey, symbol: "key"),
+        ])
+    }
+
+    @Test func aBusyFailingAliasDisablesItsChanges() {
+        let entries = children(of: entry(for: failingItem, activity: .disabling))
+
+        #expect(entries.dropFirst(2).allSatisfy { entry in
+            switch entry {
+            case .action(_, _, _, _, let isEnabled, _), .submenu(_, _, _, let isEnabled): !isEnabled
+            default: false
+            }
+        })
+        #expect(entries.count == 5)
+    }
+
     @Test func aNewCountdownKeepsTheLayout() {
         let before = entry(for: timedItem)
         let later = MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 59, endsAt: Date(timeIntervalSince1970: 60), length: 300))

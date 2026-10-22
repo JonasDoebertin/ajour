@@ -14,9 +14,14 @@ import SwiftUI
 
     override init() {
         let model = Self.makeAppModel()
-        let notifications = NotificationController { aliasID in
-            Task { await model.disableNow(aliasID: aliasID) }
-        }
+        let notifications = NotificationController(
+            onDisableRequested: { aliasID in
+                Task { await model.disableNow(aliasID: aliasID) }
+            },
+            onRetryRequested: { aliasID in
+                Task { await model.retryDisable(aliasID: aliasID) }
+            }
+        )
         model.onMailArrivals = { arrivals in
             for arrival in arrivals {
                 notifications.post(arrival, turnsOffAt: model.engine.record(for: arrival.aliasID)?.expiresAt)
@@ -24,6 +29,7 @@ import SwiftUI
         }
         model.onTimerEvents = { $0.forEach(notifications.post) }
         model.onAliasDisabled = { notifications.removeNotifications(aliasID: $0) }
+        model.onDisableRetriesStopped = { notifications.removeFailedDisableNotification(aliasID: $0) }
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications
@@ -66,6 +72,10 @@ import SwiftUI
                     fitsContent: true
                 )
             }
+        }
+        allAliases.onReplaceAPIKey = { [weak windows] in
+            onboarding.beginKeyReplacement()
+            windows?.show(.onboarding)
         }
         super.init()
     }
