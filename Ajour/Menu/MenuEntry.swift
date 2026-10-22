@@ -39,18 +39,23 @@ struct MenuAliasRow: Equatable {
     let accessibilityLabel: String
 }
 
+/// How strongly a row draws attention; problems draw their symbol in the danger color.
+enum MenuTone: Equatable {
+    case plain, danger
+}
+
 /// Describes the status item menu as data, so it can be tested and compared with what is on screen.
 indirect enum MenuEntry: Equatable {
     case header(String)
-    case notice(title: String, detail: String?, symbol: String)
-    case action(String, MenuAction, symbol: String? = nil, shortcut: String = "", isEnabled: Bool = true)
+    case notice(title: String, detail: String?, symbol: String, tone: MenuTone = .plain)
+    case action(String, MenuAction, symbol: String? = nil, shortcut: String = "", isEnabled: Bool = true, tone: MenuTone = .plain)
     case submenu(String, [MenuEntry], symbol: String? = nil, isEnabled: Bool = true)
     case alias(MenuAliasRow, [MenuEntry])
     case separator
 
     var title: String? {
         switch self {
-        case .header(let title), .notice(let title, _, _), .action(let title, _, _, _, _), .submenu(let title, _, _, _): title
+        case .header(let title), .notice(let title, _, _, _), .action(let title, _, _, _, _, _), .submenu(let title, _, _, _): title
         case .alias(let row, _): row.email
         case .separator: nil
         }
@@ -62,8 +67,8 @@ indirect enum MenuEntry: Equatable {
         switch (self, other) {
         case (.header, .header), (.notice, .notice), (.separator, .separator):
             true
-        case let (.action(_, action, symbol, shortcut, isEnabled), .action(_, otherAction, otherSymbol, otherShortcut, otherIsEnabled)):
-            action == otherAction && symbol == otherSymbol && shortcut == otherShortcut && isEnabled == otherIsEnabled
+        case let (.action(_, action, symbol, shortcut, isEnabled, tone), .action(_, otherAction, otherSymbol, otherShortcut, otherIsEnabled, otherTone)):
+            action == otherAction && symbol == otherSymbol && shortcut == otherShortcut && isEnabled == otherIsEnabled && tone == otherTone
         case let (.submenu(_, entries, symbol, isEnabled), .submenu(_, otherEntries, otherSymbol, otherIsEnabled)):
             entries == otherEntries && symbol == otherSymbol && isEnabled == otherIsEnabled
         case let (.alias(row, entries), .alias(otherRow, otherEntries)):
@@ -75,14 +80,9 @@ indirect enum MenuEntry: Equatable {
 
     static func entries(for state: MenuState) -> [MenuEntry] {
         var entries: [MenuEntry] = []
-        if let lastError = state.lastError {
-            entries += [errorNotice(for: lastError, isNetwork: state.lastErrorIsNetwork), .separator]
-        }
-        if state.apiKeyInvalid {
-            entries += [.action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key"), .separator]
-        }
-        if state.timerDataUnreadable {
-            entries += [.notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle"), .separator]
+        let problems = Self.problems(state)
+        if !problems.isEmpty {
+            entries += problems + [.separator]
         }
         if state.phase == .signedOut {
             entries += [
@@ -100,6 +100,20 @@ indirect enum MenuEntry: Equatable {
         return entries
     }
 
+    private static func problems(_ state: MenuState) -> [MenuEntry] {
+        var problems: [MenuEntry] = []
+        if let lastError = state.lastError {
+            problems.append(errorNotice(for: lastError, isNetwork: state.lastErrorIsNetwork))
+        }
+        if state.apiKeyInvalid {
+            problems.append(.action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key", tone: .danger))
+        }
+        if state.timerDataUnreadable {
+            problems.append(.notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger))
+        }
+        return problems
+    }
+
     private static let lineLength = 80
 
     /// A long server message would stretch the whole menu.
@@ -113,7 +127,8 @@ indirect enum MenuEntry: Equatable {
         return .notice(
             title: truncated(problem.title),
             detail: problem.detail.map(truncated),
-            symbol: isNetwork ? "wifi.slash" : "exclamationmark.triangle"
+            symbol: isNetwork ? "wifi.slash" : "exclamationmark.triangle",
+            tone: .danger
         )
     }
 
@@ -124,10 +139,11 @@ indirect enum MenuEntry: Equatable {
     )
 
     /// Timed aliases that aren't pinned come first; pinned aliases with a timer stay in the pinned section.
+    /// The section headers separate the two sections.
     private static func aliasSections(_ state: MenuState) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         if !state.sections.timedUnpinned.isEmpty {
-            entries += [.header("Timers")] + aliasRows(state.sections.timedUnpinned, pinned: false, state: state) + [.separator]
+            entries += [.header("Timers")] + aliasRows(state.sections.timedUnpinned, pinned: false, state: state)
         }
         entries.append(.header("Pinned"))
         entries += state.sections.pinned.isEmpty ? [noPinnedAliases] : aliasRows(state.sections.pinned, pinned: true, state: state)

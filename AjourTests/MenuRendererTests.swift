@@ -58,6 +58,35 @@ struct MenuRendererTests {
         #expect(item.isEnabled == false)
     }
 
+    @Test func dangerNoticesDrawTheirSymbolInTheDangerColor() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([
+            .notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger),
+            .notice(title: "No pinned aliases yet", detail: nil, symbol: "pin"),
+        ])
+
+        let danger = try #require(menu.items[0].image)
+        #expect(!danger.isTemplate)
+        let colors = try opaqueColors(of: danger)
+        #expect(!colors.isEmpty && colors.allSatisfy { $0.isClose(to: Palette.danger) })
+        #expect(try #require(menu.items[1].image).isTemplate)
+    }
+
+    @Test func aHighlightedDangerActionDrawsItsSymbolWhite() throws {
+        let renderer = makeRenderer()
+        renderer.show([.action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key", tone: .danger)])
+        let item = try #require(menu.items.first)
+
+        renderer.highlight(item, in: menu)
+        let highlighted = try opaqueColors(of: try #require(item.image))
+        renderer.resetHighlight()
+        let normal = try opaqueColors(of: try #require(item.image))
+
+        #expect(!highlighted.isEmpty && highlighted.allSatisfy { $0.isClose(to: .white) })
+        #expect(!normal.isEmpty && normal.allSatisfy { $0.isClose(to: Palette.danger) })
+    }
+
     @Test func aChangedNoticeUpdatesTheSameItem() throws {
         let renderer = makeRenderer()
         renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .action("Quit", .quit)])
@@ -248,4 +277,34 @@ private func aliasEntry(id: Int = 7, email: String = "shop@example.com", status:
 
 @MainActor final class PerformedActions {
     var actions: [MenuAction] = []
+}
+
+/// The colors of the fully opaque pixels of `image`, drawn in the light appearance.
+@MainActor private func opaqueColors(of image: NSImage) throws -> [NSColor] {
+    let bitmap = try #require(NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: 32, pixelsHigh: 32, bitsPerSample: 8, samplesPerPixel: 4,
+        hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+    ))
+    let context = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
+    NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: 32, height: 32))
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    return (0..<32).flatMap { x in (0..<32).compactMap { y in bitmap.colorAt(x: x, y: y) } }
+        .filter { $0.alphaComponent == 1 }
+}
+
+private extension NSColor {
+    @MainActor func isClose(to other: NSColor) -> Bool {
+        var resolved: NSColor?
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            resolved = other.usingColorSpace(.deviceRGB)
+        }
+        guard let mine = usingColorSpace(.deviceRGB), let resolved else { return false }
+        return abs(mine.redComponent - resolved.redComponent) < 0.03
+            && abs(mine.greenComponent - resolved.greenComponent) < 0.03
+            && abs(mine.blueComponent - resolved.blueComponent) < 0.03
+    }
 }

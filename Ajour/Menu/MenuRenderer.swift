@@ -59,14 +59,13 @@ import AppKit
         case .notice:
             item = NSMenuItem()
             item.isEnabled = false
-        case let .action(title, _, symbol, shortcut, isEnabled):
+        case let .action(title, _, _, shortcut, isEnabled, _):
             item = NSMenuItem(title: title, action: #selector(performAction(of:)), keyEquivalent: shortcut)
             item.target = self
-            item.image = symbol.flatMap(Self.symbolImage)
             item.isEnabled = isEnabled
         case let .submenu(title, entries, symbol, isEnabled):
             item = makeSubmenuItem(title: title, entries: entries)
-            item.image = symbol.flatMap(Self.symbolImage)
+            item.image = symbol.flatMap { Self.symbolImage($0) }
             item.isEnabled = isEnabled
         case let .alias(row, entries):
             item = makeSubmenuItem(title: row.email, entries: entries)
@@ -97,22 +96,29 @@ import AppKit
     private func showContent(of entry: MenuEntry, in item: NSMenuItem) {
         let isHighlighted = highlightedItems.values.contains { $0 === item }
         switch entry {
-        case let .notice(title, detail, symbol):
+        case let .notice(title, detail, symbol, tone):
             item.attributedTitle = Self.noticeTitle(title, detail: detail)
-            item.image = Self.symbolImage(symbol)
+            item.image = Self.symbolImage(symbol, tone: tone)
         case let .alias(row, _):
             item.attributedTitle = Self.aliasTitle(row, isHighlighted: isHighlighted)
             item.image = StateSymbol.image(for: row.status.kind, highlighted: isHighlighted)
             item.setAccessibilityLabel(row.accessibilityLabel)
-        case .header(let title), .action(let title, _, _, _, _), .submenu(let title, _, _, _):
+        case let .action(title, _, symbol, _, _, tone):
+            item.title = title
+            item.image = symbol.flatMap { Self.symbolImage($0, tone: tone, isHighlighted: isHighlighted) }
+        case .header(let title), .submenu(let title, _, _, _):
             item.title = title
         case .separator:
             break
         }
     }
 
-    private static func symbolImage(_ name: String) -> NSImage? {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil)
+    /// Plain symbols stay templates, so AppKit tints them; danger symbols carry their own color.
+    private static func symbolImage(_ name: String, tone: MenuTone = .plain, isHighlighted: Bool = false) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        guard tone == .danger else { return image }
+        let color = isHighlighted ? NSColor.white : Palette.danger
+        return image?.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color]))
     }
 
     private static func noticeTitle(_ title: String, detail: String?) -> NSAttributedString {
@@ -144,7 +150,7 @@ import AppKit
     }
 
     @objc private func performAction(of item: NSMenuItem) {
-        guard case .action(_, let action, _, _, _) = (item.representedObject as? MenuEntryBox)?.entry else { return }
+        guard case .action(_, let action, _, _, _, _) = (item.representedObject as? MenuEntryBox)?.entry else { return }
         perform(action)
     }
 }

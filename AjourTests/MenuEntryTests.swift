@@ -74,11 +74,9 @@ struct MenuEntryTests {
         let entries = MenuEntry.entries(for: menuState)
 
         #expect(entries == [
-            .notice(title: String(repeating: "a", count: 79) + "…", detail: nil, symbol: "exclamationmark.triangle"),
-            .separator,
-            .action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key"),
-            .separator,
-            .notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle"),
+            .notice(title: String(repeating: "a", count: 79) + "…", detail: nil, symbol: "exclamationmark.triangle", tone: .danger),
+            .action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key", tone: .danger),
+            .notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger),
             .separator,
             .action("Quit", .quit, symbol: "power", shortcut: "q"),
         ])
@@ -92,7 +90,8 @@ struct MenuEntryTests {
         #expect(entries.first == .notice(
             title: String(repeating: "a", count: 79) + ".",
             detail: String(repeating: "b", count: 80),
-            symbol: "exclamationmark.triangle"
+            symbol: "exclamationmark.triangle",
+            tone: .danger
         ))
     }
 
@@ -104,7 +103,8 @@ struct MenuEntryTests {
         #expect(entries.first == .notice(
             title: "Something failed.",
             detail: String(repeating: "b", count: 79) + "…",
-            symbol: "exclamationmark.triangle"
+            symbol: "exclamationmark.triangle",
+            tone: .danger
         ))
     }
 
@@ -114,8 +114,8 @@ struct MenuEntryTests {
         let network = MenuEntry.entries(for: state(phase: .loading, lastError: message, lastErrorIsNetwork: true))
         let other = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
-        #expect(network.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "wifi.slash"))
-        #expect(other.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "exclamationmark.triangle"))
+        #expect(network.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "wifi.slash", tone: .danger))
+        #expect(other.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "exclamationmark.triangle", tone: .danger))
     }
 
     @Test func signedInListsTimersThenPinnedUnderHeaders() {
@@ -129,7 +129,6 @@ struct MenuEntryTests {
         #expect(entries.map(\.title) == [
             "Timers",
             "temp@example.com",
-            nil,
             "Pinned",
             "shop@example.com",
             nil,
@@ -143,18 +142,18 @@ struct MenuEntryTests {
             "Quit",
         ])
         #expect(entries[0] == .header("Timers"))
-        #expect(entries[3] == .header("Pinned"))
-        #expect(entries[6] == .action("New Random Alias", .createRandomAlias(expiringAfter: nil), symbol: "dice"))
-        #expect(entries[7] == .submenu("New Random Alias That Expires", [
+        #expect(entries[2] == .header("Pinned"))
+        #expect(entries[5] == .action("New Random Alias", .createRandomAlias(expiringAfter: nil), symbol: "dice"))
+        #expect(entries[6] == .submenu("New Random Alias That Expires", [
             .header("Expires After"),
             .action("5 Minutes", .createRandomAlias(expiringAfter: .fiveMinutes), symbol: "timer"),
             .action("1 Hour", .createRandomAlias(expiringAfter: .oneHour)),
             .action("24 Hours", .createRandomAlias(expiringAfter: .twentyFourHours)),
         ], symbol: "timer"))
-        #expect(entries[8] == .action("New Alias…", .openNewAlias, symbol: "square.and.pencil"))
-        #expect(entries[9] == .action("All Aliases…", .openAllAliases, symbol: "list.bullet"))
-        #expect(entries[11] == .action("Settings…", .openSettings, symbol: "gearshape", shortcut: ","))
-        #expect(entries[13] == .action("Quit", .quit, symbol: "power", shortcut: "q"))
+        #expect(entries[7] == .action("New Alias…", .openNewAlias, symbol: "square.and.pencil"))
+        #expect(entries[8] == .action("All Aliases…", .openAllAliases, symbol: "list.bullet"))
+        #expect(entries[10] == .action("Settings…", .openSettings, symbol: "gearshape", shortcut: ","))
+        #expect(entries[12] == .action("Quit", .quit, symbol: "power", shortcut: "q"))
     }
 
     @Test func withoutTimersTheMenuStartsWithPinned() {
