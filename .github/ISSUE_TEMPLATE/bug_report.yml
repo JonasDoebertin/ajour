@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Ajour doesn't work as expected.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Never paste your API key. Alias addresses are fine to leave out.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the menu
+        2. Choose "Enable for 5 Minutes" on a pinned alias
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: input
+    id: ajour-version
+    attributes:
+      label: Ajour version
+      description: Select Ajour.app in Finder and choose File > Get Info.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "26.6"
+    validations:
+      required: true
