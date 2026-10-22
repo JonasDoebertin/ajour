@@ -7,6 +7,11 @@ struct StillEnabledAlert: View {
     let signOutAnyway: () -> Void
     let cancel: () -> Void
 
+    /// Focus moves to Cancel whenever the sheet becomes key, which is when macOS would otherwise focus the first
+    /// button, so with Full Keyboard Access a press of Space can't sign out by accident.
+    @FocusState private var cancelIsFocused: Bool
+    @Environment(\.controlActiveState) private var controlActiveState
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
@@ -35,11 +40,17 @@ struct StillEnabledAlert: View {
                         .frame(maxWidth: .infinity)
                 }
                 .keyboardShortcut(.defaultAction)
+                .focused($cancelIsFocused)
             }
             .controlSize(.large)
         }
         .padding(20)
         .frame(width: 260)
+        .onChange(of: controlActiveState, initial: true) {
+            if controlActiveState == .key { cancelIsFocused = true }
+        }
         .onExitCommand(perform: cancel)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(error.title)
     }
 }
