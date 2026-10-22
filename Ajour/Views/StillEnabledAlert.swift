@@ -13,7 +13,14 @@ struct StillEnabledAlert: View {
                 Text(error.title)
                     .bold()
                     .accessibilityAddTraits(.isHeader)
-                Text(error.userMessage)
+                // A long list of aliases scrolls instead of pushing the buttons off the screen.
+                ScrollView {
+                    Text(error.userMessage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: 240)
             }
             .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: 8) {
