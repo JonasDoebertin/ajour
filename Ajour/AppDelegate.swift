@@ -13,7 +13,7 @@ import SwiftUI
     private var statusMenu: StatusMenuController?
 
     override init() {
-        let model = AppModel(timerStore: Self.makeTimerStore())
+        let model = Self.makeAppModel()
         let notifications = NotificationController { aliasID in
             Task { await model.disableNow(aliasID: aliasID) }
         }
@@ -109,6 +109,13 @@ import SwiftUI
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    private static func makeAppModel() -> AppModel {
+        #if DEBUG
+        if DemoMode.isEnabled { return DemoMode.makeAppModel() }
+        #endif
+        return AppModel(timerStore: makeTimerStore())
     }
 
     private static func makeTimerStore() -> any TimerStore {
