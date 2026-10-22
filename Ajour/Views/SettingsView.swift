@@ -6,31 +6,26 @@ struct SettingsView: View {
     let onboarding: OnboardingModel
     let openOnboarding: () -> Void
 
+    @State private var confirmsSignOut = false
+
     var body: some View {
-        Form {
-            Section("Account") {
-                account
-            }
-            Section {
-                Toggle("Launch at login", isOn: Binding(
-                    get: { settings.launchAtLogin },
-                    set: { settings.setLaunchAtLogin($0) }
-                ))
-                if let error = settings.launchAtLoginError {
-                    Text(error)
-                        .foregroundStyle(.red)
-                }
-            }
-            Section("About") {
-                Text(AboutText.tagline)
-                Text(AboutText.disclaimer)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 20) {
+            group("Account") { account }
+            group("General") { general }
+            group("About") { about }
         }
-        .formStyle(.grouped)
-        .frame(width: 420)
+        .padding(24)
+        .frame(width: 420, alignment: .leading)
         .onAppear { settings.refreshLaunchAtLogin() }
         .task { await settings.refreshAccount() }
+        .alert("Sign Out of Ajour?", isPresented: $confirmsSignOut) {
+            Button("Sign Out", role: .destructive) {
+                Task { await settings.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Ajour disables aliases with a running timer, then removes the API key from this Mac.")
+        }
         .alert("Could Not Sign Out", isPresented: Binding(
             get: { settings.signOutError != nil },
             set: { if !$0 { settings.signOutError = nil } }
@@ -41,33 +36,112 @@ struct SettingsView: View {
         }
     }
 
+    private func group<Content: View>(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            FormGroup { content() }
+        }
+    }
+
     @ViewBuilder private var account: some View {
         if appModel.phase == .signedOut {
-            Text("Not signed in.")
-            Button("Set Up…") { openOnboarding() }
+            HStack {
+                Text("Not signed in.")
+                Spacer()
+                Button("Set Up…") { openOnboarding() }
+            }
+            .padding(.vertical, 4)
         } else {
             if let userInfo = appModel.userInfo {
-                LabeledContent("Name", value: userInfo.name)
-                LabeledContent("Email", value: userInfo.email)
+                detail("Name", userInfo.name)
+                Divider()
+                detail("Email", userInfo.email)
             } else {
                 Text("Account details are not available right now.")
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
             }
-            HStack {
-                Button("Replace API Key…") {
-                    onboarding.beginKeyReplacement()
-                    openOnboarding()
-                }
+            Divider()
+            HStack(spacing: 8) {
                 Spacer()
                 if settings.isSigningOut {
                     ProgressView()
                         .controlSize(.small)
                 }
-                Button("Sign Out") {
-                    Task { await settings.signOut() }
+                Button("Replace API Key…") {
+                    onboarding.beginKeyReplacement()
+                    openOnboarding()
+                }
+                Button {
+                    confirmsSignOut = true
+                } label: {
+                    Text("Sign Out")
+                        .foregroundStyle(Palette.color(Palette.danger))
                 }
                 .disabled(settings.isSigningOut)
             }
+            .padding(.vertical, 6)
         }
+    }
+
+    private func detail(_ title: LocalizedStringKey, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var general: some View {
+        HStack {
+            Text("Launch at login")
+            Spacer()
+            Toggle("Launch at login", isOn: Binding(
+                get: { settings.launchAtLogin },
+                set: { settings.setLaunchAtLogin($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .padding(.vertical, 6)
+        if let error = settings.launchAtLoginError {
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                InlineError(message: error)
+                Button("Open Login Items…") { settings.openLoginItems() }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder private var about: some View {
+        HStack(spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Ajour")
+                    .font(.headline)
+                Text(AboutText.tagline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+        Divider()
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "info.circle")
+                .accessibilityHidden(true)
+            Text(AboutText.disclaimer)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 6)
     }
 }

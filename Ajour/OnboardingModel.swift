@@ -136,7 +136,7 @@ struct OnboardingProgress: Equatable {
             do {
                 try launchAtLogin.setEnabled(enabled)
             } catch {
-                errorMessage = LaunchAtLoginControl.errorMessage(for: error)
+                errorMessage = LaunchAtLoginControl.errorMessage(enabling: enabled)
             }
         }
         await requestNotificationAuthorization()

@@ -31,9 +31,13 @@ import SimpleLoginKit
             try launchAtLoginControl.setEnabled(enabled)
             launchAtLoginError = nil
         } catch {
-            launchAtLoginError = LaunchAtLoginControl.errorMessage(for: error)
+            launchAtLoginError = LaunchAtLoginControl.errorMessage(enabling: enabled)
         }
         refreshLaunchAtLogin()
+    }
+
+    func openLoginItems() {
+        launchAtLoginControl.openSettings()
     }
 
     func signOut() async {

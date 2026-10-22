@@ -208,7 +208,7 @@ struct OnboardingModelTests {
 
         #expect(onboarding.isComplete)
         #expect(notificationRequests.value == 1)
-        #expect(onboarding.errorMessage == "Could not change launch at login. Operation not permitted")
+        #expect(onboarding.errorMessage == "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items.")
     }
 
     @Test func finishKeepsTheWindowOpenToShowALaunchAtLoginFailure() async {
