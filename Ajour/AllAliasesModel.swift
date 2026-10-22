@@ -102,9 +102,9 @@ enum EmptyState: Equatable {
         }
         guard generation == self.generation else { return }
         isLoading = false
-        hasLoadedFirstPage = true
         switch result {
         case .success(let page):
+            hasLoadedFirstPage = true
             let listedIDs = Set(aliases.map(\.id))
             aliases += page.filter { !listedIDs.contains($0.id) }
             nextPage += 1
