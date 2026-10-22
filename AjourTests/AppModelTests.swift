@@ -722,6 +722,26 @@ struct AppModelTests {
         #expect(model.lastError == "shop@example.com was enabled for the previous account and could not be disabled.")
     }
 
+    @Test func anEnableCutOffBySignOutAndANewSignInSaysSo() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let enabling = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await transport.waitUntilARequestIsHeld()
+        try await model.signOutAnyway()
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        _ = try await model.signIn(apiKey: "replacement-key")
+
+        transport.release()
+        let succeeded = await enabling.value
+
+        #expect(!succeeded)
+        #expect(model.engine.records.isEmpty)
+        #expect(model.lastError == "shop@example.com was enabled for the previous account and has been disabled.")
+    }
+
     @Test func disableAfterCutOffByAKeyReplacementSaysNoTimerStarted() async throws {
         let model = try await signedInModel()
         transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
