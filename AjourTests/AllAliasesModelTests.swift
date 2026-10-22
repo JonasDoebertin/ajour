@@ -372,6 +372,26 @@ final class AllAliasesModelTests {
         #expect(model.subtitle == "12 aliases")
     }
 
+    @Test func subtitleCountsMatchesWhenTheTotalIsUnknown() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)])
+        transport.enqueue("/api/v2/aliases", method: "POST", json: Fixtures.aliasPageJSON(ids: 5...7))
+        model.searchText = "concert"
+
+        await model.scheduleSearch().value
+
+        #expect(model.subtitle == "3 matching aliases")
+    }
+
+    @Test func subtitleCountsOneMatchWhenTheTotalIsUnknown() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)])
+        transport.enqueue("/api/v2/aliases", method: "POST", json: Fixtures.aliasPageJSON(ids: 5...5))
+        model.searchText = "concert"
+
+        await model.scheduleSearch().value
+
+        #expect(model.subtitle == "1 matching alias")
+    }
+
     @Test func subtitleShowsLoadingMore() async throws {
         let (model, _) = try await loadedModel((1...20).map { Fixtures.aliasJSON(id: $0) }, total: 45)
         transport.holdNext("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 21...22))

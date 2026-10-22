@@ -155,10 +155,13 @@ enum EmptyState: Equatable {
     /// Empty while nothing has answered yet, so a loading window doesn't claim the account has no aliases.
     var subtitle: String {
         guard hasLoadedFirstPage || totalAliases != nil else { return "" }
-        let total = totalAliases ?? aliases.count
         if !query.isEmpty, hasLoadedFirstPage {
-            return "\(aliases.count) of \(Self.count(total))"
+            guard let totalAliases else {
+                return aliases.count == 1 ? "1 matching alias" : "\(aliases.count) matching aliases"
+            }
+            return "\(aliases.count) of \(Self.count(totalAliases))"
         }
+        let total = totalAliases ?? aliases.count
         if isLoading, hasLoadedFirstPage {
             return "\(Self.count(aliases.count)) loaded · loading more"
         }
