@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/menu.png" width="600" alt="The Ajour menu with pinned aliases, one of them enabled with 47 minutes left">
+  <img src="docs/images/menu.png" width="600" alt="The Ajour menu with timed and pinned aliases, one of them enabled with 47 minutes left and turning off at 15:20">
 </p>
 
 Some websites send nothing but spam, so you keep their [SimpleLogin](https://simplelogin.io) alias disabled. Then you need to log in, the site emails you a login code, and you have to open the SimpleLogin dashboard, enable the alias, wait for the mail, and remember to disable it again.
@@ -20,17 +20,22 @@ Ajour turns that into two clicks. Pick the alias in the menu bar, enable it for 
 
 ## Features
 
-- **Enable aliases for a while.** Turn any pinned alias on for 5 minutes, 1 hour, or 24 hours. The menu counts down the time left, and you can extend the timer, keep the alias enabled, or disable it early.
-- **Know when mail arrives.** While a timer runs, Ajour checks the alias every 15 seconds and notifies you about new mail, with a Disable Now button in the notification.
+- **Enable aliases for a while.** Turn any pinned alias on for 5 minutes, 1 hour, or 24 hours. The menu counts down the time left and shows the time the alias turns off, and you can extend the timer, keep the alias enabled, or disable it early.
+- **See every alias's state at a glance.** Each alias in the menu shows a symbol and a word for its state: enabled, disabled, or a countdown. Running timers show their countdown and turn-off time, and timers on unpinned aliases get their own Timers header at the top. Every state has its own shape, so color is never the only cue, and VoiceOver reads the state and turn-off time.
+- **Know when mail arrives.** While a timer runs, Ajour checks the alias every 15 seconds and notifies you about new mail, including the time the alias turns off, with a Disable Now button in the notification.
 - **Never leave an alias on by accident.** If your Mac is asleep or Ajour isn't running when a timer ends, the alias is disabled right after wake or at the next launch. Quitting Ajour disables timed aliases first. When disabling keeps failing, Ajour tells you and keeps trying.
 - **Create aliases fast.** One click creates a random alias and copies it to the clipboard, optionally with an expiry. The New Alias window takes your own prefix and offers your custom domains first.
 - **Find any alias.** The All Aliases window searches your whole account. Right-click an alias to pin it to the menu, copy it, or enable or disable it.
-- **Stay out of the way.** Ajour lives in the menu bar, has no Dock icon, and can start at login.
+- **Stay out of the way.** Ajour lives in the menu bar, has no Dock icon, and can start at login. If macOS blocks launching at login, Settings links to Login Items. Signing out asks for confirmation first.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/all-aliases.png" alt="The All Aliases window with search, pinned aliases, and remaining time"></td>
-    <td width="50%"><img src="docs/images/new-alias.png" alt="The New Alias window with prefix, suffix, and expiry"><br><img src="docs/images/onboarding.png" alt="The welcome step of onboarding"></td>
+    <td width="50%" valign="top"><img src="docs/images/all-aliases.png" alt="The All Aliases window with search, pinned aliases, and remaining time"></td>
+    <td width="50%" valign="top"><img src="docs/images/settings.png" alt="The Settings window with account, launch at login, and about"></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/images/new-alias.png" alt="The New Alias window with prefix, suffix, and a live preview of the address"></td>
+    <td width="50%" valign="top"><img src="docs/images/onboarding.png" alt="The welcome step of onboarding with progress dots"></td>
   </tr>
 </table>
 
@@ -70,7 +75,7 @@ swift test --package-path Packages/SimpleLoginKit
 xcodebuild test -project Ajour.xcodeproj -scheme Ajour -destination "platform=macOS"
 ```
 
-Debug builds have a demo mode with a made-up account, so you can try the UI without an API key: pass `-AjourDemo YES` as a launch argument, or add `-AjourDemoSignedOut YES` to start at onboarding. The screenshots in this README come from demo mode via `swift scripts/take-screenshots.swift <path to Debug Ajour.app> docs/images`.
+Debug builds have a demo mode with a made-up account, so you can try the UI without an API key: pass `-AjourDemo YES` as a launch argument, or add `-AjourDemoSignedOut YES` to start at onboarding. The screenshots in this README come from demo mode via `swift scripts/take-screenshots.swift <path to Debug Ajour.app> docs/images`, in the system's current appearance.
 
 [docs/ci.md](docs/ci.md) explains the CI pipeline and how releases are made.
 

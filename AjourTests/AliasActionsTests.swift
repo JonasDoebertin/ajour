@@ -58,7 +58,7 @@ struct AliasActionsTests {
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
         #expect(model.engine.record(for: 7)?.expiresAt == clock.now.addingTimeInterval(300))
         #expect(model.pinned.first?.enabled == true)
-        #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 300))])
+        #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 300, endsAt: clock.now.addingTimeInterval(300), length: 300))])
         #expect(model.lastError == nil)
     }
 
@@ -68,6 +68,7 @@ struct AliasActionsTests {
         await model.enable(aliasID: 7, for: .fiveMinutes)
 
         #expect(model.lastError == "Could not reach SimpleLogin. Check your network connection.")
+        #expect(model.lastErrorIsNetwork)
         #expect(model.engine.record(for: 7) == nil)
         #expect(model.menuSections.pinned.first?.state == .disabled)
     }
@@ -89,6 +90,7 @@ struct AliasActionsTests {
         await model.enable(aliasID: 7, for: .fiveMinutes)
 
         #expect(model.lastError == "The alias did not change. Try again.")
+        #expect(!model.lastErrorIsNetwork)
     }
 
     @Test func aSuccessfulActionClearsThePreviousError() async throws {
@@ -103,13 +105,27 @@ struct AliasActionsTests {
         #expect(model.lastError == nil)
     }
 
+    @Test func enablingMarksTheAliasAsEnabling() async throws {
+        let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: false)])
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        let first = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await transport.waitUntilARequestIsHeld()
+        #expect(model.activity(aliasID: 7) == .enabling)
+
+        transport.release()
+        _ = await first.value
+
+        #expect(model.activity(aliasID: 7) == nil)
+    }
+
     @Test func aRepeatedActionOnTheSameAliasIsIgnoredWhileTheFirstRuns() async throws {
         let model = try await signedInModel(pinned: [Fixtures.aliasJSON(id: 7, enabled: false)])
         transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
         transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
         let first = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
         await transport.waitUntilARequestIsHeld()
-        #expect(model.isBusy(aliasID: 7))
+        #expect(model.activity(aliasID: 7) != nil)
 
         await model.enable(aliasID: 7, for: .fiveMinutes)
         await model.disableNow(aliasID: 7)
@@ -118,8 +134,8 @@ struct AliasActionsTests {
 
         #expect(requestCount(path: "/api/aliases/7") == 1)
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
-        #expect(model.isBusy(aliasID: 7) == false)
-        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 300))
+        #expect(model.activity(aliasID: 7) == nil)
+        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 300, endsAt: clock.now.addingTimeInterval(300), length: 300))
     }
 
     @Test func signingInWithANewKeyClearsTheLastError() async throws {
@@ -228,7 +244,7 @@ struct AliasActionsTests {
         #expect(record?.enabledAt == clock.now)
         #expect(record?.expiresAt == clock.now.addingTimeInterval(3600))
         #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
-        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 3600))
+        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 3600, endsAt: clock.now.addingTimeInterval(3600), length: 3600))
         #expect(model.lastError == nil)
     }
 
@@ -510,7 +526,7 @@ struct AliasActionsTests {
 
         await model.tick()
 
-        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 40))])
+        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 40, endsAt: unpinnedRecord.expiresAt, length: 60))])
         #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .disabled)])
     }
 

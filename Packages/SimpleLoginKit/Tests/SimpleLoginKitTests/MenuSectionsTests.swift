@@ -20,7 +20,22 @@ import Testing
 
         let sections = MenuSections.make(pinned: pinned, records: records, now: now)
 
-        #expect(sections.pinned == [MenuAliasItem(id: 1, email: "a@example.com", state: .timed(remaining: 120))])
+        #expect(sections.pinned == [MenuAliasItem(id: 1, email: "a@example.com", state: .timed(remaining: 120, endsAt: now.addingTimeInterval(120), length: 180))])
+    }
+
+    @Test func timedStateCarriesEndAndLength() {
+        let records = [TimerRecord(
+            aliasID: 1,
+            email: "a@example.com",
+            enabledAt: now.addingTimeInterval(-60),
+            expiresAt: now.addingTimeInterval(240)
+        )]
+
+        let sections = MenuSections.make(pinned: [], records: records, now: now)
+
+        #expect(sections.timedUnpinned.map(\.state) == [
+            .timed(remaining: 240, endsAt: now.addingTimeInterval(240), length: 300),
+        ])
     }
 
     @Test func pinnedWithoutRecordFollowsEnabledFlag() {
@@ -45,8 +60,8 @@ import Testing
         let sections = MenuSections.make(pinned: pinned, records: records, now: now)
 
         #expect(sections.timedUnpinned == [
-            MenuAliasItem(id: 8, email: "soon@example.com", state: .timed(remaining: 60)),
-            MenuAliasItem(id: 9, email: "late@example.com", state: .timed(remaining: 600)),
+            MenuAliasItem(id: 8, email: "soon@example.com", state: .timed(remaining: 60, endsAt: now.addingTimeInterval(60), length: 120)),
+            MenuAliasItem(id: 9, email: "late@example.com", state: .timed(remaining: 600, endsAt: now.addingTimeInterval(600), length: 660)),
         ])
         #expect(sections.pinned.map(\.state) == [.disabled])
     }
@@ -66,7 +81,7 @@ import Testing
 
         let sections = MenuSections.make(pinned: [], records: records, now: now)
 
-        #expect(sections.timedUnpinned.map(\.state) == [.timed(remaining: 0)])
+        #expect(sections.timedUnpinned.map(\.state) == [.timed(remaining: 0, endsAt: now.addingTimeInterval(-30), length: 30)])
     }
 
     @Test func formatsMinutesAndHours() {

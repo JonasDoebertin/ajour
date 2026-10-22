@@ -34,6 +34,8 @@ actor DemoTransport: HTTPTransport {
             return aliasJSON(aliases[index])
         }
         switch (method, path) {
+        case ("GET", "/api/stats"):
+            return ["nb_alias": aliases.count, "nb_block": 0, "nb_forward": 0, "nb_reply": 0]
         case ("GET", "/api/user_info"):
             return ["name": DemoAccount.name, "email": DemoAccount.email, "is_premium": true, "in_trial": false]
         case (_, "/api/v2/aliases"):

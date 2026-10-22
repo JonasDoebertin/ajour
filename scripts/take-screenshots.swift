@@ -1,6 +1,9 @@
 // Takes the README screenshots from a Debug build running in demo mode.
 //
-//     swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory>
+//     swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark]
+//
+// The optional `dark` argument launches the demo with `-AppleInterfaceStyle Dark`. That only affects the windows: the
+// status menu follows the system appearance, so switch the system itself to take the menu in the other appearance.
 //
 // Needs Screen Recording and Accessibility permission for the terminal app. While it runs, it covers the screen
 // with a backdrop and moves the mouse, so don't touch the Mac until it finishes.
@@ -9,10 +12,11 @@ import AppKit
 import ApplicationServices
 
 let arguments = CommandLine.arguments
-guard arguments.count == 3 else {
-    print("usage: swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory>")
+guard arguments.count == 3 || (arguments.count == 4 && arguments[3] == "dark") else {
+    print("usage: swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark]")
     exit(2)
 }
+let usesDarkWindows = arguments.count == 4
 let appURL = URL(fileURLWithPath: arguments[1])
 let outputURL = URL(fileURLWithPath: arguments[2], isDirectory: true)
 try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
@@ -35,6 +39,7 @@ func launchDemo(signedOut: Bool = false) -> Process {
     let process = Process()
     process.executableURL = appURL.appendingPathComponent("Contents/MacOS/Ajour")
     process.arguments = ["-AjourDemo", "YES", "-AjourDemoSignedOut", signedOut ? "YES" : "NO"]
+    if usesDarkWindows { process.arguments? += ["-AppleInterfaceStyle", "Dark"] }
     do { try process.run() } catch { fail("could not launch \(appURL.path): \(error)") }
     return process
 }
@@ -231,7 +236,7 @@ let demo = launchDemo()
 _ = statusItem(of: demo)
 wait(3)
 
-captureMenu(of: demo, hovering: { $0.hasPrefix("● travel@") }, as: "menu.png")
+captureMenu(of: demo, hovering: { $0.hasPrefix("travel@") }, as: "menu.png")
 
 choose("All Aliases…", in: demo)
 captureWindow(titled: "All Aliases", of: demo, as: "all-aliases.png")
@@ -243,6 +248,10 @@ wait(1.5)
 clickTextField(inWindowTitled: "New Alias", of: demo)
 type("concert-tickets")
 captureWindow(titled: "New Alias", of: demo, as: "new-alias.png")
+press(keyCode: 13, flags: .maskCommand)
+
+choose("Settings…", in: demo)
+captureWindow(titled: "Settings", of: demo, as: "settings.png")
 press(keyCode: 13, flags: .maskCommand)
 
 quit(demo)

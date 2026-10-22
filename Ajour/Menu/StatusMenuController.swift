@@ -43,9 +43,14 @@ import Observation
         liveUpdates = timer
     }
 
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        renderer.highlight(item, in: menu)
+    }
+
     func menuDidClose(_ menu: NSMenu) {
         liveUpdates?.invalidate()
         liveUpdates = nil
+        renderer.resetHighlight()
     }
 
     private func showCurrentEntries() {
@@ -53,10 +58,9 @@ import Observation
     }
 
     private func showIcon(hasActiveTimers: Bool) {
-        statusItem.button?.image = NSImage(
-            systemSymbolName: hasActiveTimers ? "envelope.badge.fill" : "envelope",
-            accessibilityDescription: "Ajour"
-        )
+        let image = NSImage(named: hasActiveTimers ? "MenuBarGlyphTimers" : "MenuBarGlyphIdle")
+        image?.accessibilityDescription = "Ajour"
+        statusItem.button?.image = image
     }
 
     private func perform(_ action: MenuAction) {

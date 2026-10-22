@@ -89,7 +89,7 @@ final class AliasCreationTests {
         await model.createRandomAlias(expiringAfter: .oneHour)
 
         #expect(model.engine.record(for: 42)?.expiresAt == clock.now.addingTimeInterval(3600))
-        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 42, email: "random@example.com", state: .timed(remaining: 3600))])
+        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 42, email: "random@example.com", state: .timed(remaining: 3600, endsAt: clock.now.addingTimeInterval(3600), length: 3600))])
         #expect(model.menuSections.pinned.isEmpty)
         #expect(copied == ["random@example.com"])
         #expect(announced == ["random@example.com"])
@@ -106,7 +106,7 @@ final class AliasCreationTests {
         await model.createRandomAlias(expiringAfter: .fiveMinutes)
 
         #expect(test.requestCount(path: "/api/aliases/42/toggle") == 1)
-        #expect(model.lastError == "Timer data is unreadable, so timers can't be started or changed.")
+        #expect(model.lastError == "random@example.com was created, but its timer could not start, so it was disabled again.")
         #expect(test.copied.isEmpty)
         #expect(test.announced.isEmpty)
     }
@@ -261,7 +261,7 @@ final class AliasCreationTests {
 
         _ = try await model.createCustomAlias(prefix: "shop", suffix: Self.customSuffix, mailboxID: 3, expiringAfter: .twentyFourHours)
 
-        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 50, email: "shop@my.dev", state: .timed(remaining: 86400))])
+        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 50, email: "shop@my.dev", state: .timed(remaining: 86400, endsAt: clock.now.addingTimeInterval(86400), length: 86400))])
     }
 
     @Test func aRejectedCustomAliasPassesOnTheServerError() async throws {

@@ -18,12 +18,19 @@ enum LaunchAtLogin {
 struct LaunchAtLoginControl {
     var isEnabled: () -> Bool
     var setEnabled: (Bool) throws -> Void
+    var openSettings: () -> Void
 
     static var system: LaunchAtLoginControl {
-        LaunchAtLoginControl(isEnabled: { LaunchAtLogin.isEnabled }, setEnabled: LaunchAtLogin.setEnabled)
+        LaunchAtLoginControl(
+            isEnabled: { LaunchAtLogin.isEnabled },
+            setEnabled: LaunchAtLogin.setEnabled,
+            openSettings: { SMAppService.openSystemSettingsLoginItems() }
+        )
     }
 
-    static func errorMessage(for error: any Error) -> String {
-        "Could not change launch at login. \(error.localizedDescription)"
+    static func errorMessage(enabling: Bool) -> String {
+        enabling
+            ? "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items."
+            : "Ajour could not be removed from your login items. Remove it in System Settings › General › Login Items."
     }
 }

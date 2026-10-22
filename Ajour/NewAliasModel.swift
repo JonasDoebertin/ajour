@@ -16,6 +16,7 @@ import SimpleLoginKit
     private(set) var isLoading = false
     private(set) var isCreating = false
     private(set) var isComplete = false
+    private var createFailed = false
     private var mailbox: Mailbox?
     /// Changes on reset, so a create that finishes after the window closed doesn't affect the next one.
     @ObservationIgnored private var generation = 0
@@ -28,6 +29,28 @@ import SimpleLoginKit
 
     var canSubmit: Bool {
         canCreate && suffix != nil && mailbox != nil && !trimmedPrefix.isEmpty && !isCreating
+    }
+
+    var customSuffixes: [AliasSuffix] {
+        suffixes.filter(\.isCustom)
+    }
+
+    var sharedSuffixes: [AliasSuffix] {
+        suffixes.filter { !$0.isCustom }
+    }
+
+    /// The address the alias will get, once there is a prefix and the suffixes have loaded.
+    var previewAddress: String? {
+        guard let suffix, !trimmedPrefix.isEmpty else { return nil }
+        return trimmedPrefix + suffix.suffix
+    }
+
+    var expiryNote: String? {
+        expiry.map { "off after \($0.title.lowercased())" }
+    }
+
+    var submitTitle: String {
+        if isCreating { "Creating…" } else if createFailed { "Try Again" } else { "Create" }
     }
 
     func load() async {
@@ -56,14 +79,22 @@ import SimpleLoginKit
         let generation = self.generation
         isCreating = true
         errorMessage = nil
+        createFailed = false
         defer { isCreating = false }
         do {
             _ = try await appModel.createCustomAlias(prefix: trimmedPrefix, suffix: suffix, mailboxID: mailbox.id, expiringAfter: expiry)
             guard generation == self.generation else { return }
+            createFailed = false
             isComplete = true
         } catch {
             guard generation == self.generation else { return }
-            errorMessage = AppModel.userMessage(for: error)
+            let message = AppModel.userMessage(for: error)
+            if error is AliasCreationError {
+                errorMessage = message
+            } else {
+                createFailed = true
+                errorMessage = "Could not create the alias. " + message
+            }
         }
     }
 
@@ -76,6 +107,7 @@ import SimpleLoginKit
         canCreate = true
         mailbox = nil
         errorMessage = nil
+        createFailed = false
         isComplete = false
     }
 

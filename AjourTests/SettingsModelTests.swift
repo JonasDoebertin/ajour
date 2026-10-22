@@ -71,13 +71,30 @@ struct SettingsModelTests {
         #expect(settings.launchAtLoginError == nil)
     }
 
-    @Test func aFailedLaunchAtLoginChangeShowsTheErrorAndTheActualState() {
+    @Test func aFailedLaunchAtLoginAdditionExplainsWhereToAllowIt() {
         launchAtLogin.failure = LaunchAtLoginRefused()
 
         settings.setLaunchAtLogin(true)
 
         #expect(!settings.launchAtLogin)
-        #expect(settings.launchAtLoginError == "Could not change launch at login. Operation not permitted")
+        #expect(settings.launchAtLoginError == "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items.")
+    }
+
+    @Test func aFailedLaunchAtLoginRemovalExplainsWhereToRemoveIt() {
+        launchAtLogin.isEnabled = true
+        settings.refreshLaunchAtLogin()
+        launchAtLogin.failure = LaunchAtLoginRefused()
+
+        settings.setLaunchAtLogin(false)
+
+        #expect(settings.launchAtLogin)
+        #expect(settings.launchAtLoginError == "Ajour could not be removed from your login items. Remove it in System Settings › General › Login Items.")
+    }
+
+    @Test func openingLoginItemsOpensSystemSettings() {
+        settings.openLoginItems()
+
+        #expect(launchAtLogin.loginItemsOpened == 1)
     }
 
     @Test func aSuccessfulLaunchAtLoginChangeClearsThePreviousError() {

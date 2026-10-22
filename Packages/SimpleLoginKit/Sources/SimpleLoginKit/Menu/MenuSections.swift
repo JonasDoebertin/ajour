@@ -3,7 +3,7 @@ import Foundation
 public enum AliasMenuState: Equatable, Sendable {
     case disabled
     case enabled
-    case timed(remaining: TimeInterval)
+    case timed(remaining: TimeInterval, endsAt: Date, length: TimeInterval)
 }
 
 public struct MenuAliasItem: Equatable, Sendable, Identifiable {
@@ -48,7 +48,11 @@ public struct MenuSections: Equatable, Sendable {
     }
 
     private static func timedState(of record: TimerRecord, now: Date) -> AliasMenuState {
-        .timed(remaining: max(0, record.expiresAt.timeIntervalSince(now)))
+        .timed(
+            remaining: max(0, record.expiresAt.timeIntervalSince(now)),
+            endsAt: record.expiresAt,
+            length: record.expiresAt.timeIntervalSince(record.enabledAt)
+        )
     }
 }
 

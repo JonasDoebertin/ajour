@@ -159,6 +159,7 @@ final class TestClock: @unchecked Sendable {
     var isEnabled: Bool
     var failure: (any Error)?
     private(set) var appliedSettings: [Bool] = []
+    private(set) var loginItemsOpened = 0
 
     init(isEnabled: Bool = false, failure: (any Error)? = nil) {
         self.isEnabled = isEnabled
@@ -172,7 +173,8 @@ final class TestClock: @unchecked Sendable {
                 if let failure = self.failure { throw failure }
                 self.appliedSettings.append(enabled)
                 self.isEnabled = enabled
-            }
+            },
+            openSettings: { self.loginItemsOpened += 1 }
         )
     }
 }

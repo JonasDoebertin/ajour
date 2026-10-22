@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import SimpleLoginKit
 @testable import Ajour
@@ -6,6 +7,7 @@ import SimpleLoginKit
 @MainActor
 struct OnboardingModelTests {
     static let keyLikeText = String(repeating: "k", count: 60)
+    static let rejectedKeyMessage = "SimpleLogin did not accept this key. Check that you copied all of it, or create a new one."
 
     let keyStore: InMemoryAPIKeyStore
     let transport = StubTransport()
@@ -115,7 +117,7 @@ struct OnboardingModelTests {
         await onboarding.submit()
 
         #expect(onboarding.step == .enterKey)
-        #expect(onboarding.errorMessage == APIError.unauthorized.userMessage)
+        #expect(onboarding.errorMessage == Self.rejectedKeyMessage)
         #expect(keyStore.key == nil)
     }
 
@@ -207,7 +209,7 @@ struct OnboardingModelTests {
 
         #expect(onboarding.isComplete)
         #expect(notificationRequests.value == 1)
-        #expect(onboarding.errorMessage == "Could not change launch at login. Operation not permitted")
+        #expect(onboarding.errorMessage == "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items.")
     }
 
     @Test func finishKeepsTheWindowOpenToShowALaunchAtLoginFailure() async {
@@ -245,6 +247,90 @@ struct OnboardingModelTests {
         #expect(test.notificationRequests.value == 1)
         #expect(!onboarding.isFinishing)
         #expect(onboarding.isComplete)
+    }
+
+    @Test func progressCountsFourSteps() async {
+        #expect(onboarding.progress == OnboardingProgress(step: 1, total: 4))
+
+        onboarding.showKeyEntry()
+        #expect(onboarding.progress == OnboardingProgress(step: 2, total: 4))
+
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        onboarding.apiKey = "valid-key"
+        await onboarding.submit()
+        #expect(onboarding.progress == OnboardingProgress(step: 3, total: 4))
+
+        onboarding.confirmAccount()
+        #expect(onboarding.progress == OnboardingProgress(step: 4, total: 4))
+    }
+
+    @Test func replacingAKeyHidesProgressAndBack() {
+        onboarding.beginKeyReplacement()
+
+        #expect(onboarding.progress == nil)
+        #expect(!onboarding.canGoBack)
+    }
+
+    @Test func endingAKeyReplacementUpdatesTheProgressOnScreen() {
+        onboarding.beginKeyReplacement()
+        let progressChanged = ChangeFlag()
+        withObservationTracking { _ = onboarding.progress } onChange: { progressChanged.set() }
+
+        onboarding.reset()
+
+        #expect(progressChanged.isSet)
+        #expect(onboarding.progress == OnboardingProgress(step: 1, total: 4))
+    }
+
+    @Test func backIsOfferedOnlyAfterTheWelcome() async {
+        #expect(!onboarding.canGoBack)
+
+        onboarding.showKeyEntry()
+        #expect(onboarding.canGoBack)
+
+        let confirmed = await confirmedOnboarding()
+        #expect(confirmed.canGoBack)
+
+        confirmed.confirmAccount()
+        #expect(!confirmed.canGoBack)
+    }
+
+    @Test func backReturnsToThePreviousStep() async {
+        let onboarding = await confirmedOnboarding()
+
+        onboarding.goBack()
+        #expect(onboarding.step == .enterKey)
+
+        onboarding.goBack()
+        #expect(onboarding.step == .explain)
+    }
+
+    @Test func backClearsTheError() async {
+        transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
+        onboarding.showKeyEntry()
+        onboarding.apiKey = "bad-key"
+        await onboarding.submit()
+
+        onboarding.goBack()
+
+        #expect(onboarding.errorMessage == nil)
+    }
+
+    @Test func rejectedKeyExplainsWhatToCheck() async {
+        transport.enqueue("/api/user_info", status: 401, json: #"{"error":"Wrong api key"}"#)
+        onboarding.showKeyEntry()
+        onboarding.apiKey = "bad-key"
+
+        await onboarding.submit()
+
+        #expect(onboarding.errorMessage == Self.rejectedKeyMessage)
+    }
+
+    @Test func initialsUseFirstAndLastName() {
+        #expect(OnboardingModel.initials(of: "Alex Morgan") == "AM")
+        #expect(OnboardingModel.initials(of: "Alex") == "A")
+        #expect(OnboardingModel.initials(of: "Alex van Morgan") == "AM")
+        #expect(OnboardingModel.initials(of: "  ") == "?")
     }
 
     @Test func resetStartsOver() async {
