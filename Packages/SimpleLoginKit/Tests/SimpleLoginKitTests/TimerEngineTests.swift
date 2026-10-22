@@ -1409,12 +1409,31 @@ final class TestClock: @unchecked Sendable {
         engine.api = nil
         gated.open()
 
-        await #expect(throws: TimerEngineError.accountChanged) {
+        await #expect(throws: TimerEngineError.accountChanged(email: "one@example.com", disabledAgain: true)) {
             try await enabling.value
         }
         #expect(engine.records.isEmpty)
         #expect(store.records.isEmpty)
         #expect(api.aliases[1]?.enabled == false)
+    }
+
+    @Test func anEnableWhoseAliasCannotBeDisabledAgainSaysSo() async throws {
+        api.aliases[1] = .fixture(id: 1, email: "one@example.com", enabled: true)
+        api.toggleErrors = [APIError.transport("offline")]
+        let engine = makeEngine()
+        let gated = GatedAliasAPI(base: api)
+        engine.api = gated
+
+        let enabling = Task { try await engine.enable(aliasID: 1, for: .fiveMinutes) }
+        await gated.waitUntilHolding(1)
+        engine.api = nil
+        gated.open()
+
+        await #expect(throws: TimerEngineError.accountChanged(email: "one@example.com", disabledAgain: false)) {
+            try await enabling.value
+        }
+        #expect(engine.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == true)
     }
 
     // MARK: - Reporting each disabled alias

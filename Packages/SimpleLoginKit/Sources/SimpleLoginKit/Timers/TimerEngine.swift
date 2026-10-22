@@ -20,8 +20,9 @@ public enum TimerEngineError: Error, Equatable {
     case storeUnavailable
     case disableInProgress
     case noTimer
-    /// The key changed while an alias was being enabled, so the alias was switched off again instead of timed.
-    case accountChanged
+    /// The key changed while an alias was being enabled, so no timer started. The alias was switched off
+    /// again unless `disabledAgain` is false, in which case it may still be enabled.
+    case accountChanged(email: String, disabledAgain: Bool)
 }
 
 public enum DisableAllOutcome: Equatable, Sendable {
@@ -96,8 +97,8 @@ public enum DisableAllOutcome: Equatable, Sendable {
         let generation = keyGeneration
         let alias = try await aliasSwitch.ensureEnabled(aliasID: aliasID)
         guard generation == keyGeneration else {
-            _ = try? await aliasSwitch.ensureDisabled(aliasID: aliasID)
-            throw TimerEngineError.accountChanged
+            let disabledAgain = (try? await aliasSwitch.ensureDisabled(aliasID: aliasID)) != nil
+            throw TimerEngineError.accountChanged(email: alias.email, disabledAgain: disabledAgain)
         }
         return try startTimer(for: alias, duration: duration)
     }
