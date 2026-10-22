@@ -76,7 +76,13 @@ struct MenuEntryTests {
         let entries = MenuEntry.entries(for: menuState)
 
         #expect(entries == [
-            .notice(title: String(repeating: "a", count: 79) + "…", detail: nil, symbol: "exclamationmark.triangle", tone: .danger),
+            .notice(
+                title: String(repeating: "a", count: 79) + "…",
+                detail: nil,
+                symbol: "exclamationmark.triangle",
+                tone: .danger,
+                fullText: String(repeating: "a", count: 81)
+            ),
             .action("API key invalid – Re-enter Key…", .reEnterAPIKey, symbol: "key", tone: .danger),
             .notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger),
             .separator,
@@ -93,7 +99,8 @@ struct MenuEntryTests {
             title: String(repeating: "a", count: 79) + ".",
             detail: String(repeating: "b", count: 80),
             symbol: "exclamationmark.triangle",
-            tone: .danger
+            tone: .danger,
+            fullText: message
         ))
     }
 
@@ -106,7 +113,51 @@ struct MenuEntryTests {
             title: "Something failed.",
             detail: String(repeating: "b", count: 79) + "…",
             symbol: "exclamationmark.triangle",
-            tone: .danger
+            tone: .danger,
+            fullText: message
+        ))
+    }
+
+    @Test(arguments: [
+        (
+            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled.",
+            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been",
+            "disabled."
+        ),
+        (
+            "shop-blue-7421@simplelogin.com was enabled for the previous account and could not be disabled.",
+            "shop-blue-7421@simplelogin.com was enabled for the previous account and could",
+            "not be disabled."
+        ),
+        (
+            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was started.",
+            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was",
+            "started."
+        ),
+    ])
+    func aLongSentenceContinuesOnTheDetailLine(message: String, title: String, detail: String) {
+        let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
+
+        #expect(entries.first == .notice(
+            title: title,
+            detail: detail,
+            symbol: "exclamationmark.triangle",
+            tone: .danger,
+            fullText: message
+        ))
+    }
+
+    @Test func theContinuationOfALongSentenceIsShortenedToEightyCharacters() {
+        let message = String(repeating: "word ", count: 40) + "end."
+
+        let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
+
+        #expect(entries.first == .notice(
+            title: String(repeating: "word ", count: 16).trimmingCharacters(in: .whitespaces),
+            detail: String(String(repeating: "word ", count: 24).prefix(79)) + "…",
+            symbol: "exclamationmark.triangle",
+            tone: .danger,
+            fullText: message
         ))
     }
 
@@ -116,8 +167,20 @@ struct MenuEntryTests {
         let network = MenuEntry.entries(for: state(phase: .loading, lastError: message, lastErrorIsNetwork: true))
         let other = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
-        #expect(network.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "wifi.slash", tone: .danger))
-        #expect(other.first == .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "exclamationmark.triangle", tone: .danger))
+        #expect(network.first == .notice(
+            title: "Could not reach SimpleLogin.",
+            detail: "Check your network connection.",
+            symbol: "wifi.slash",
+            tone: .danger,
+            fullText: message
+        ))
+        #expect(other.first == .notice(
+            title: "Could not reach SimpleLogin.",
+            detail: "Check your network connection.",
+            symbol: "exclamationmark.triangle",
+            tone: .danger,
+            fullText: message
+        ))
     }
 
     @Test func signedInListsTimersThenPinnedUnderHeaders() {

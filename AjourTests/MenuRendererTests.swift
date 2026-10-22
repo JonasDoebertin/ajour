@@ -87,6 +87,35 @@ struct MenuRendererTests {
         #expect(!normal.isEmpty && normal.allSatisfy { $0.isClose(to: Palette.danger) })
     }
 
+    @Test func aNoticeOffersItsFullTextAsTooltipAndSpokenLabel() throws {
+        let renderer = makeRenderer()
+        let message = "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled."
+
+        renderer.show([.notice(
+            title: "shop-blue-7421@simplelogin.com was enabled for the previous account and has been",
+            detail: "disabled.",
+            symbol: "exclamationmark.triangle",
+            tone: .danger,
+            fullText: message
+        )])
+
+        let item = try #require(menu.items.first)
+        #expect(item.toolTip == message)
+        #expect(item.accessibilityLabel() == message)
+    }
+
+    @Test func aNoticeUpdatedInPlaceDropsTheFullTextItNoLongerHas() throws {
+        let renderer = makeRenderer()
+        renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash", fullText: "Offline for now.")])
+        let item = try #require(menu.items.first)
+
+        renderer.show([.notice(title: "Not set up", detail: nil, symbol: "key")])
+
+        #expect(menu.items.first === item)
+        #expect(item.toolTip == nil)
+        #expect(item.accessibilityLabel() != "Offline for now.")
+    }
+
     @Test func aChangedNoticeUpdatesTheSameItem() throws {
         let renderer = makeRenderer()
         renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .action("Quit", .quit)])
