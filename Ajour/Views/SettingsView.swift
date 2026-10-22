@@ -28,16 +28,11 @@ struct SettingsView: View {
         } message: {
             Text("Ajour disables aliases with a running timer, then removes the API key from this Mac.")
         }
-        .sheet(isPresented: Binding(
-            get: { settings.blockedSignOut != nil },
-            set: { if !$0 { settings.blockedSignOut = nil } }
-        )) {
-            if let error = settings.blockedSignOut {
-                StillEnabledAlert(error: error) {
-                    settings.signOutAnyway()
-                } cancel: {
-                    settings.blockedSignOut = nil
-                }
+        .sheet(item: Bindable(settings).blockedSignOut) { error in
+            StillEnabledAlert(error: error) {
+                settings.signOutAnyway()
+            } cancel: {
+                settings.blockedSignOut = nil
             }
         }
         .alert("Could Not Sign Out", isPresented: Binding(

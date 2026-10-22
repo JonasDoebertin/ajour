@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SimpleLoginKit
 
-struct StillEnabledAlias: Equatable {
+struct StillEnabledAlias: Hashable {
     let email: String
     let problem: DisableProblem
 
@@ -17,11 +17,13 @@ struct StillEnabledAlias: Equatable {
     }
 }
 
-enum SignOutError: Error, Equatable {
+enum SignOutError: Error, Hashable, Identifiable {
     /// Aliases sorted by email, plus the number of enables and creations still running when sign-out gave up waiting.
     case aliasesStillEnabled([StillEnabledAlias], pendingEnables: Int)
     case timerDataUnreadable
     case timersNotSaved
+
+    var id: Self { self }
 
     var title: String {
         switch self {
