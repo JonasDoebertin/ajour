@@ -23,6 +23,16 @@ struct StateSymbolTests {
         #expect(normal.alphaComponent == 1)
     }
 
+    @Test func symbolForAnAppearanceKeepsThatAppearancesColors() throws {
+        let dark = try #require(NSAppearance(named: .darkAqua))
+        let center = try pixel(of: StateSymbol.image(for: .enabled, highlighted: false, appearance: dark), x: 32, y: 32)
+        var expected = NSColor.clear
+        dark.performAsCurrentDrawingAppearance { expected = Palette.stateOn.usingColorSpace(.sRGB) ?? .clear }
+        #expect(abs(center.redComponent - expected.redComponent) < 0.03)
+        #expect(abs(center.greenComponent - expected.greenComponent) < 0.03)
+        #expect(abs(center.blueComponent - expected.blueComponent) < 0.03)
+    }
+
     @Test func pieStartsAtTwelveOClockAndRunsClockwise() throws {
         let quarter = StateSymbol.image(for: .timed(shareLeft: 0.25), highlighted: false)
         #expect(try pixel(of: quarter, x: 40, y: 24).alphaComponent == 1)

@@ -11,11 +11,19 @@ enum StateSymbol {
     private static let slashReach: CGFloat = 3.5
     private static let twelveOClock: CGFloat = 90
 
-    static func image(for kind: AliasStatus.Kind, highlighted: Bool) -> NSImage {
+    /// Without an appearance, the colors follow wherever the image is drawn, as in a menu.
+    static func image(for kind: AliasStatus.Kind, highlighted: Bool, appearance: NSAppearance? = nil) -> NSImage {
         let image = NSImage(size: NSSize(width: canvas, height: canvas), flipped: false) { rect in
-            let color = highlighted ? NSColor.white : tint(for: kind)
-            color.set()
-            draw(kind, in: rect)
+            let drawSymbol = {
+                let color = highlighted ? NSColor.white : tint(for: kind)
+                color.set()
+                draw(kind, in: rect)
+            }
+            if let appearance {
+                appearance.performAsCurrentDrawingAppearance(drawSymbol)
+            } else {
+                drawSymbol()
+            }
             return true
         }
         image.isTemplate = false

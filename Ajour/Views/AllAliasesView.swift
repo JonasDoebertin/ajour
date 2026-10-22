@@ -4,35 +4,33 @@ import SwiftUI
 struct AllAliasesView: View {
     @Bindable var model: AllAliasesModel
     let appModel: AppModel
+    let openNewAlias: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(model.aliases) { alias in
-                    AliasRow(alias: alias, stateLabel: model.status(of: alias).words)
-                        .contextMenu { AliasRowActions(alias: alias, model: model) }
-                        .onAppear { Task { await model.loadMore(after: alias) } }
+                ForEach(model.sections) { section in
+                    Section(section.title) {
+                        ForEach(section.aliases) { alias in
+                            AliasRow(alias: alias, status: model.status(of: alias))
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel(model.accessibilityLabel(for: alias))
+                                .contextMenu { AliasRowActions(alias: alias, model: model) }
+                                .onAppear { Task { await model.loadMore(after: alias) } }
+                        }
+                    }
+                    .listRowSeparator(.hidden)
+                    .listSectionSeparator(.hidden)
                 }
-                listFooter
-            }
-            .overlay {
-                if model.emptyState != nil {
-                    ContentUnavailableView(
-                        model.searchText.isEmpty ? "No Aliases" : "No Matching Aliases",
-                        systemImage: "envelope"
-                    )
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let lastError = appModel.lastError {
-                    Text(lastError)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(.bar)
+                if model.isLoading, !model.aliases.isEmpty {
+                    loadingMore
                 }
             }
+            .listStyle(.inset)
+            .overlay { placeholder }
+            .safeAreaInset(edge: .bottom, spacing: 0) { problemBar }
         }
+        .navigationSubtitle(model.subtitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ToolbarSearchField(text: $model.searchText, prompt: "Search aliases")
@@ -44,47 +42,125 @@ struct AllAliasesView: View {
         .frame(minWidth: 420, minHeight: 320)
     }
 
-    @ViewBuilder private var listFooter: some View {
-        if model.isLoading {
+    private var loadingMore: some View {
+        HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-                .frame(maxWidth: .infinity)
-        } else if let errorMessage = model.errorMessage {
-            HStack {
-                Text(errorMessage)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Try Again") { Task { await model.loadNextPage() } }
+            Text("Loading more aliases…")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .listRowSeparator(.hidden)
+    }
+
+    @ViewBuilder private var placeholder: some View {
+        switch model.emptyState {
+        case .noAliases:
+            ContentUnavailableView {
+                Label("No Aliases", systemImage: "envelope.open")
+            } description: {
+                Text("Aliases you create in SimpleLogin or with Ajour show up here.")
+            } actions: {
+                Button("New Alias…", action: openNewAlias)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
             }
+        case .noMatches(let query):
+            ContentUnavailableView {
+                Label("No Matching Aliases", systemImage: "magnifyingglass")
+            } description: {
+                Text("No address or note contains “\(query)”. Check the spelling or try another search.")
+            }
+        case nil:
+            if model.isLoading, model.aliases.isEmpty {
+                ProgressView()
+            }
+        }
+    }
+
+    /// Loading problems offer to try again; a failed action on a row explains itself with the app's message.
+    @ViewBuilder private var problemBar: some View {
+        if let errorMessage = model.errorMessage {
+            ProblemBar(title: "Could not load aliases.", detail: errorMessage) {
+                Button("Try Again") { Task { await model.loadNextPage() } }
+                    .buttonBorderShape(.capsule)
+            }
+        } else if let lastError = appModel.lastError {
+            let message = ProblemMessage(lastError)
+            ProblemBar(title: message.title, detail: message.detail) { EmptyView() }
         }
     }
 }
 
 private struct AliasRow: View {
     let alias: Alias
-    let stateLabel: String
+    let status: AliasStatus
 
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
+            StateSymbolView(kind: status.kind)
             VStack(alignment: .leading, spacing: 2) {
-                Text(alias.email)
+                HStack(spacing: 4) {
+                    Text(alias.email)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if alias.pinned {
+                        Image(systemName: "pin")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if let note = alias.note, !note.isEmpty {
                     Text(note)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
-            Spacer()
-            if alias.pinned {
-                Image(systemName: "pin.fill")
-                    .foregroundStyle(.secondary)
-                    .help("Pinned")
-                    .accessibilityLabel("Pinned")
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(status.words)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(Palette.color(StateSymbol.tint(for: status.kind)))
+                if let turnsOff = status.turnsOff {
+                    Text(turnsOff)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Text(stateLabel)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+            .monospacedDigit()
         }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct ProblemBar<Action: View>: View {
+    let title: String
+    let detail: String?
+    @ViewBuilder let action: Action
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title3)
+                .foregroundStyle(Palette.color(Palette.danger))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .fontWeight(.semibold)
+                if let detail {
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            action
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 }
 
@@ -94,46 +170,51 @@ private struct AliasRowActions: View {
     let model: AllAliasesModel
 
     var body: some View {
+        let isBusy = model.isBusy(alias)
+        Button(alias.pinned ? "Unpin" : "Pin", systemImage: alias.pinned ? "pin.slash" : "pin") {
+            Task { await model.togglePin(alias) }
+        }
+        .disabled(isBusy)
+        Button("Copy Address", systemImage: "doc.on.doc") { model.copy(alias) }
+        Divider()
         Group {
-            Button(alias.pinned ? "Unpin" : "Pin") {
-                Task { await model.togglePin(alias) }
-            }
-            Button("Copy Address") { model.copy(alias) }
-            Divider()
             switch model.state(of: alias) {
             case .disabled:
-                durationButtons(title: { "Enable for \($0)" }) { await model.enable(alias, for: $0) }
-                Button("Enable Permanently") {
+                Menu("Enable for", systemImage: "timer") {
+                    durationButtons { await model.enable(alias, for: $0) }
+                }
+                Button("Enable Permanently", systemImage: "checkmark.circle") {
                     Task { await model.enablePermanently(alias) }
                 }
             case .timed:
-                disableButton
-                Button("Keep Enabled") {
+                Button("Keep Enabled", systemImage: "infinity") {
                     Task { await model.keepEnabled(alias) }
                 }
-                Menu("Extend") {
-                    durationButtons(title: { $0 }) { await model.enable(alias, for: $0) }
+                Menu("Extend", systemImage: "goforward.plus") {
+                    durationButtons { await model.enable(alias, for: $0) }
                 }
-            case .enabled:
+                Divider()
                 disableButton
-                durationButtons(title: { "Disable After \($0)" }) { await model.disableAfter(alias, duration: $0) }
+            case .enabled:
+                Menu("Disable After", systemImage: "timer") {
+                    durationButtons { await model.disableAfter(alias, duration: $0) }
+                }
+                Divider()
+                disableButton
             }
         }
-        .disabled(model.isBusy(alias))
+        .disabled(isBusy)
     }
 
     private var disableButton: some View {
-        Button("Disable") {
+        Button("Disable", systemImage: "poweroff") {
             Task { await model.disable(alias) }
         }
     }
 
-    private func durationButtons(
-        title: @escaping (String) -> String,
-        action: @escaping @MainActor (AliasDuration) async -> Void
-    ) -> some View {
+    private func durationButtons(action: @escaping @MainActor (AliasDuration) async -> Void) -> some View {
         ForEach(AliasDuration.allCases, id: \.self) { duration in
-            Button(title(duration.title)) {
+            Button(duration.title) {
                 Task { await action(duration) }
             }
         }

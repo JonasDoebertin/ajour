@@ -49,7 +49,9 @@ import SwiftUI
                 )
             case .allAliases:
                 return WindowContent.hosting(
-                    AllAliasesView(model: allAliases, appModel: model),
+                    AllAliasesView(model: allAliases, appModel: model) { [weak windows] in
+                        windows?.show(.newAlias)
+                    },
                     fitsContent: false
                 )
             case .settings:

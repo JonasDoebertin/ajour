@@ -330,6 +330,18 @@ final class AllAliasesModelTests {
         #expect(model.errorMessage == nil)
     }
 
+    @Test func subtitleStaysEmptyUntilTheFirstPageOrTheTotalAnswers() async throws {
+        let model = makeModel(appModel: try await signedInAppModel())
+        transport.holdNext("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 1)]))
+        let loading = Task { await model.reload() }
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.subtitle == "")
+        transport.release()
+        await loading.value
+        #expect(model.subtitle == "1 alias")
+    }
+
     @Test func subtitleShowsMatchesWhileSearching() async throws {
         let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)], total: 12)
         transport.enqueue("/api/v2/aliases", method: "POST", json: Self.pageJSON([]))
