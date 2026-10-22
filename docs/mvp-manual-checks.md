@@ -14,7 +14,7 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 4. A correct key shows name and email, then the final step. Done enables launch at login (check System Settings > General > Login Items) and shows the notification permission prompt.
 5. Back returns from the key step to the welcome step and from "Signed In" to the key step. The welcome and final steps have no Back button.
 6. After a relaunch, no onboarding appears, and Settings shows name and email.
-7. Settings > Sign Out asks "Sign Out of Ajour?" with the sentence that Ajour disables aliases with a running timer and removes the API key. Cancel keeps you signed in. Sign Out returns to onboarding, and a running timer's alias is disabled in the web app.
+7. Settings > Sign Out asks "Sign Out of Ajour?" with the message "Ajour disables aliases with a running timer, then removes the API key from this Mac." Cancel keeps you signed in. Sign Out returns to onboarding, and a running timer's alias is disabled in the web app.
 8. Settings > Replace API Key… goes straight to the key step, with no progress dots and no Back button, and closes after confirmation.
 9. "Settings…" in the menu, and ⌘, while an Ajour window is in front, both open Settings in front.
 10. Settings > About shows the tagline and that Ajour is not affiliated with SimpleLogin or Proton AG.
@@ -27,7 +27,7 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 2. "Enable for 5 Minutes":
    - The alias is enabled in the web app.
    - The menu bar icon switches to the glyph with the timer dot.
-   - The row moves under "Timers" and shows "4:59 left · off at HH:MM" under the address, with the timer symbol.
+   - The row stays under "Pinned" and shows "4:59 left · off at HH:MM" under the address, with the timer symbol. A timer on an unpinned alias shows under "Timers" at the top instead.
 3. The remaining time counts down while the menu is open, also while that alias's submenu is open. The submenu stays open.
 4. "Extend" ▸ "1 Hour": the remaining time jumps to about 1:00:00, and the turn-off time moves with it.
 5. "Disable Now":
