@@ -201,7 +201,7 @@ enum AliasActionError: Error, Equatable {
     }
 
     var menuSections: MenuSections {
-        MenuSections.make(pinned: pinned, records: engine.records, now: now)
+        MenuSections.make(pinned: pinned, records: engine.records, failures: engine.failures, now: now)
     }
 
     func menuState(at date: Date) -> MenuState {
@@ -210,7 +210,7 @@ enum AliasActionError: Error, Equatable {
             lastError: lastError,
             apiKeyInvalid: apiKeyInvalid,
             timerDataUnreadable: engine.loadError != nil,
-            sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
+            sections: MenuSections.make(pinned: pinned, records: engine.records, failures: engine.failures, now: date),
             pinnedLoaded: pinnedLoaded,
             activities: activities.merging(engine.disablingAliasIDs.map { ($0, .disabling) }) { own, _ in own },
             lastErrorIsNetwork: lastErrorIsNetwork,

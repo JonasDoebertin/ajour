@@ -21,7 +21,8 @@ enum AliasActivity: Equatable {
 /// The words and shape of an alias's state, shared by the menu and All Aliases.
 struct AliasStatus: Equatable {
     enum Kind: Equatable {
-        case enabled, disabled, timed(shareLeft: Double), busy
+        /// `stuck` is a timer that ran out without the alias being switched off.
+        case enabled, disabled, timed(shareLeft: Double), busy, stuck
     }
 
     let kind: Kind
@@ -56,6 +57,10 @@ struct AliasStatus: Equatable {
                 words: "\(RemainingTime.format(remaining)) left",
                 turnsOff: "off at \(shortTime(endsAt, locale: locale, timeZone: timeZone))"
             )
+        case .disableFailing:
+            return AliasStatus(kind: .stuck, words: "Not disabled · retrying", turnsOff: nil)
+        case .disableRefused:
+            return AliasStatus(kind: .stuck, words: "Can't disable with this key", turnsOff: nil)
         }
     }
 
@@ -83,6 +88,10 @@ struct AliasStatus: Equatable {
             parts.append("enabled")
             parts.append(minutes == 1 ? "1 minute left" : "\(minutes) minutes left")
             parts.append("turns off at \(shortTime(endsAt, locale: locale, timeZone: timeZone))")
+        case .disableFailing:
+            parts += ["not disabled", "Ajour keeps trying"]
+        case .disableRefused:
+            parts.append("can't be disabled with the current API key")
         }
         return parts.joined(separator: ", ")
     }

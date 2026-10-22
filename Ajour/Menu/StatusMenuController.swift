@@ -92,6 +92,8 @@ import Observation
             model.extend(aliasID: aliasID, by: duration)
         case let .disableAfter(aliasID, duration):
             Task { await model.disableAfter(aliasID: aliasID, duration: duration) }
+        case .retryDisable(let aliasID):
+            Task { await model.retryDisable(aliasID: aliasID) }
         }
     }
 }

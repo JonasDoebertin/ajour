@@ -9,6 +9,10 @@ enum StateSymbol {
     private static let pieDiameter: CGFloat = 8
     private static let slashWidth: CGFloat = 1.6
     private static let slashReach: CGFloat = 3.5
+    private static let exclamationWidth: CGFloat = 1.8
+    private static let exclamationBarTop: CGFloat = 3.4
+    private static let exclamationBarBottom: CGFloat = 0.4
+    private static let exclamationDotCenter: CGFloat = -2
     private static let twelveOClock: CGFloat = 90
 
     /// Without an appearance, the colors follow wherever the image is drawn, as in a menu.
@@ -34,6 +38,7 @@ enum StateSymbol {
         switch kind {
         case .enabled: Palette.stateOn
         case .timed: Palette.stateTimed
+        case .stuck: Palette.danger
         case .disabled, .busy: Palette.stateOff
         }
     }
@@ -52,6 +57,10 @@ enum StateSymbol {
             slash(at: center).stroke()
         case .busy:
             openRing(at: center).stroke()
+        case .stuck:
+            ring(at: center).fill()
+            exclamationBar(at: center).fill()
+            disc(diameter: exclamationWidth, at: NSPoint(x: center.x, y: center.y + exclamationDotCenter)).fill()
         }
     }
 
@@ -101,6 +110,16 @@ enum StateSymbol {
         )
         path.close()
         return path
+    }
+
+    private static func exclamationBar(at center: NSPoint) -> NSBezierPath {
+        let bar = NSRect(
+            x: center.x - exclamationWidth / 2,
+            y: center.y + exclamationBarBottom,
+            width: exclamationWidth,
+            height: exclamationBarTop - exclamationBarBottom
+        )
+        return NSBezierPath(roundedRect: bar, xRadius: exclamationWidth / 2, yRadius: exclamationWidth / 2)
     }
 
     private static func slash(at center: NSPoint) -> NSBezierPath {

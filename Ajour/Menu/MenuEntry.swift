@@ -15,6 +15,7 @@ enum MenuAction: Equatable {
     case keepEnabled(aliasID: Int, email: String)
     case extend(aliasID: Int, duration: AliasDuration)
     case disableAfter(aliasID: Int, duration: AliasDuration)
+    case retryDisable(aliasID: Int)
 }
 
 /// Everything the menu shows, taken from the app model at one moment.
@@ -209,19 +210,27 @@ indirect enum MenuEntry: Equatable {
 
     private static func changes(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
         let disableNow = MenuEntry.action("Disable Now", .disableNow(aliasID: item.id), symbol: "poweroff", isEnabled: isEnabled)
+        let keepEnabled = MenuEntry.action(
+            "Keep Enabled", .keepEnabled(aliasID: item.id, email: item.email), symbol: "infinity", isEnabled: isEnabled
+        )
+        let extend = MenuEntry.submenu("Extend", [.header("Extend By")] + durationActions(symbol: "timer") {
+            .extend(aliasID: item.id, duration: $0)
+        }, symbol: "goforward.plus", isEnabled: isEnabled)
         switch item.state {
         case .disabled:
             return durationActions(symbol: "timer", titlePrefix: "Enable for ", isEnabled: isEnabled) {
                 .enable(aliasID: item.id, duration: $0)
             }
         case .timed:
+            return [disableNow, keepEnabled, extend]
+        case .disableFailing:
             return [
-                disableNow,
-                .action("Keep Enabled", .keepEnabled(aliasID: item.id, email: item.email), symbol: "infinity", isEnabled: isEnabled),
-                .submenu("Extend", [.header("Extend By")] + durationActions(symbol: "timer") {
-                    .extend(aliasID: item.id, duration: $0)
-                }, symbol: "goforward.plus", isEnabled: isEnabled),
+                .action("Try Again", .retryDisable(aliasID: item.id), symbol: "arrow.clockwise", isEnabled: isEnabled),
+                keepEnabled,
+                extend,
             ]
+        case .disableRefused:
+            return [keepEnabled, .action("Replace API Key…", .reEnterAPIKey, symbol: "key", isEnabled: isEnabled)]
         case .enabled:
             return [disableNow] + durationActions(symbol: "timer", titlePrefix: "Disable After ", isEnabled: isEnabled) {
                 .disableAfter(aliasID: item.id, duration: $0)

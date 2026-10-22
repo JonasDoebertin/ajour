@@ -440,6 +440,19 @@ final class AllAliasesModelTests {
         #expect(model.aliases.map { model.status(of: $0).words } == ["3:12 left"])
     }
 
+    @Test func anAliasWhoseDisableFailsShowsAsFailing() async throws {
+        let test = AllAliasesModelTests(records: [
+            TimerRecord(aliasID: 7, email: "shop@example.com", enabledAt: TestClock().now.addingTimeInterval(-360), expiresAt: TestClock().now.addingTimeInterval(-60)),
+        ])
+        let (model, appModel) = try await test.loadedModel([Fixtures.aliasJSON(id: 7, enabled: true)])
+
+        await appModel.tick()
+
+        #expect(appModel.engine.failures[7] != nil)
+        #expect(model.state(of: try #require(model.aliases.first)) == .disableFailing)
+        #expect(model.aliases.map { model.status(of: $0).line } == ["Not disabled · retrying"])
+    }
+
     @Test func aRowWhoseTimerExpiredShowsAsDisabledInTheWindowAndTheMenu() async throws {
         let (model, appModel) = try await loadedModel([Fixtures.aliasJSON(id: 7, enabled: false, pinned: true)])
         transport.enqueue("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 7, enabled: false, pinned: true)]))

@@ -18,7 +18,7 @@ import Testing
         let pinned = [Alias.fixture(id: 1, email: "a@example.com", enabled: false)]
         let records = [record(aliasID: 1, expiresIn: 120)]
 
-        let sections = MenuSections.make(pinned: pinned, records: records, now: now)
+        let sections = MenuSections.make(pinned: pinned, records: records, failures: [:], now: now)
 
         #expect(sections.pinned == [MenuAliasItem(id: 1, email: "a@example.com", state: .timed(remaining: 120, endsAt: now.addingTimeInterval(120), length: 180))])
     }
@@ -31,7 +31,7 @@ import Testing
             expiresAt: now.addingTimeInterval(240)
         )]
 
-        let sections = MenuSections.make(pinned: [], records: records, now: now)
+        let sections = MenuSections.make(pinned: [], records: records, failures: [:], now: now)
 
         #expect(sections.timedUnpinned.map(\.state) == [
             .timed(remaining: 240, endsAt: now.addingTimeInterval(240), length: 300),
@@ -44,7 +44,7 @@ import Testing
             Alias.fixture(id: 2, email: "on@example.com", enabled: true),
         ]
 
-        let sections = MenuSections.make(pinned: pinned, records: [], now: now)
+        let sections = MenuSections.make(pinned: pinned, records: [], failures: [:], now: now)
 
         #expect(sections.pinned.map(\.state) == [.disabled, .enabled])
         #expect(sections.pinned.map(\.id) == [1, 2])
@@ -57,7 +57,7 @@ import Testing
             record(aliasID: 8, email: "soon@example.com", expiresIn: 60),
         ]
 
-        let sections = MenuSections.make(pinned: pinned, records: records, now: now)
+        let sections = MenuSections.make(pinned: pinned, records: records, failures: [:], now: now)
 
         #expect(sections.timedUnpinned == [
             MenuAliasItem(id: 8, email: "soon@example.com", state: .timed(remaining: 60, endsAt: now.addingTimeInterval(60), length: 120)),
@@ -70,7 +70,7 @@ import Testing
         let pinned = [Alias.fixture(id: 1)]
         let records = [record(aliasID: 1, expiresIn: 120)]
 
-        let sections = MenuSections.make(pinned: pinned, records: records, now: now)
+        let sections = MenuSections.make(pinned: pinned, records: records, failures: [:], now: now)
 
         #expect(sections.timedUnpinned.isEmpty)
         #expect(sections.pinned.count == 1)
@@ -79,9 +79,47 @@ import Testing
     @Test func expiredRecordShowsZeroRemaining() {
         let records = [record(aliasID: 9, expiresIn: -30)]
 
-        let sections = MenuSections.make(pinned: [], records: records, now: now)
+        let sections = MenuSections.make(pinned: [], records: records, failures: [:], now: now)
 
         #expect(sections.timedUnpinned.map(\.state) == [.timed(remaining: 0, endsAt: now.addingTimeInterval(-30), length: 30)])
+    }
+
+    private let transientFailure = DisableFailure.transient(
+        problem: .unreachable, attempts: 2, nextRetryAt: Date(timeIntervalSince1970: 1_000_060), reported: false
+    )
+
+    @Test func aFailingDisableShowsAsFailing() {
+        let records = [record(aliasID: 9, expiresIn: -30)]
+
+        let sections = MenuSections.make(pinned: [], records: records, failures: [9: transientFailure], now: now)
+
+        #expect(sections.timedUnpinned.map(\.state) == [.disableFailing])
+    }
+
+    @Test func aRefusedDisableShowsAsRefused() {
+        let records = [record(aliasID: 9, expiresIn: -30)]
+
+        let sections = MenuSections.make(pinned: [], records: records, failures: [9: .forbidden], now: now)
+
+        #expect(sections.timedUnpinned.map(\.state) == [.disableRefused])
+    }
+
+    @Test func aRejectedKeyKeepsTheTimedState() {
+        let records = [record(aliasID: 9, expiresIn: -30)]
+
+        let sections = MenuSections.make(pinned: [], records: records, failures: [9: .unauthorized], now: now)
+
+        #expect(sections.timedUnpinned.map(\.state) == [.timed(remaining: 0, endsAt: now.addingTimeInterval(-30), length: 30)])
+    }
+
+    @Test func aPinnedAliasShowsAFailedDisable() {
+        let pinned = [Alias.fixture(id: 1)]
+        let records = [record(aliasID: 1, expiresIn: -30)]
+
+        let sections = MenuSections.make(pinned: pinned, records: records, failures: [1: transientFailure], now: now)
+
+        #expect(sections.pinned.map(\.state) == [.disableFailing])
+        #expect(sections.timedUnpinned.isEmpty)
     }
 
     @Test func formatsMinutesAndHours() {

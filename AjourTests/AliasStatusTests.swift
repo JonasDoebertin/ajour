@@ -124,4 +124,33 @@ struct AliasStatusTests {
         #expect(label(state: .disabled, activity: .enabling) == "github@alexmorgan.example, enabling")
         #expect(label(pinned: true, state: timed(remaining: 120), activity: .disabling) == "github@alexmorgan.example, pinned, disabling")
     }
+
+    @Test func aFailingDisableSaysItKeepsTrying() {
+        let status = status(.disableFailing)
+
+        #expect(status.kind == .stuck)
+        #expect(status.line == "Not disabled · retrying")
+    }
+
+    @Test func aRefusedDisableNamesTheKey() {
+        let status = status(.disableRefused)
+
+        #expect(status.kind == .stuck)
+        #expect(status.line == "Can't disable with this key")
+        #expect(status.turnsOff == nil)
+    }
+
+    @Test func voiceOverReadsFailedAndRefusedDisables() {
+        #expect(label(state: .disableFailing, email: "shop@example.com") == "shop@example.com, not disabled, Ajour keeps trying")
+        #expect(label(pinned: true, state: .disableRefused, email: "shop@example.com")
+            == "shop@example.com, pinned, can't be disabled with the current API key")
+    }
+
+    @Test func anActivityWinsOverAFailedDisable() {
+        let status = status(.disableFailing, activity: .disabling)
+
+        #expect(status.kind == .busy)
+        #expect(status.line == "Disabling…")
+        #expect(label(state: .disableRefused, activity: .disabling) == "github@alexmorgan.example, disabling")
+    }
 }

@@ -67,6 +67,10 @@ import SwiftUI
                 )
             }
         }
+        allAliases.onReplaceAPIKey = { [weak windows] in
+            onboarding.beginKeyReplacement()
+            windows?.show(.onboarding)
+        }
         super.init()
     }
 
