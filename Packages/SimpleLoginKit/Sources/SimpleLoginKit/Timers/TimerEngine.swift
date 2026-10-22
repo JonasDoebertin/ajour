@@ -402,18 +402,20 @@ public enum DisableAllOutcome: Equatable, Sendable {
     }
 
     /// Returns whether the key just became invalid, as opposed to already being known as invalid.
+    /// Retries that were running stop, because no retry can succeed with an invalid key.
     private func markAllUnauthorized() -> Bool {
         let wasAlreadyUnauthorized = failures.values.contains(.unauthorized)
         for record in records {
+            stopRetryingDisable(aliasID: record.aliasID)
             failures[record.aliasID] = .unauthorized
         }
         return !wasAlreadyUnauthorized
     }
 
     /// Returns whether the refusal should be reported: once per timer, however often the key changes.
-    /// Returns false as well when the alias is no longer timed.
+    /// Returns false as well when the alias is no longer timed or the key is already known as invalid.
     private func markForbidden(aliasID: Int) -> Bool {
-        guard let index = recordIndex(for: aliasID) else { return false }
+        guard let index = recordIndex(for: aliasID), failures[aliasID] != .unauthorized else { return false }
         stopRetryingDisable(aliasID: aliasID)
         failures[aliasID] = .forbidden
         guard records[index].refusalReportedAt == nil else { return false }
@@ -424,10 +426,11 @@ public enum DisableAllOutcome: Equatable, Sendable {
 
     /// Returns the problem to report when this failure is the first of its run and reporting is not paused;
     /// a run is reported once. A record extended while the attempt was running is no longer due,
-    /// so its failure is discarded.
+    /// so its failure is discarded, and so is a failure that ends after the key became invalid.
     private func registerTransientFailure(aliasID: Int, error: any Error) -> DisableProblem? {
         let failedAt = now()
-        guard let record = record(for: aliasID), record.expiresAt <= failedAt else { return nil }
+        guard let record = record(for: aliasID), record.expiresAt <= failedAt, failures[aliasID] != .unauthorized
+        else { return nil }
         let problem = DisableProblem(error: error)
         var attempts = 1
         var reported = false
