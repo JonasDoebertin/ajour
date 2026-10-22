@@ -26,7 +26,8 @@ struct AliasActionsTests {
             transport: transport,
             now: { clock.now },
             copyToClipboard: copyToClipboard,
-            disableBudget: disableBudget
+            disableBudget: disableBudget,
+            retry: .once
         )
     }
 

@@ -18,7 +18,8 @@ final class NewAliasModelTests {
             timerStore: timerStore,
             transport: transport,
             now: { clock.now },
-            copyToClipboard: { [weak self] in self?.copied.append($0) }
+            copyToClipboard: { [weak self] in self?.copied.append($0) },
+            retry: .once
         )
         appModel.onNewAliasCopied = { [weak self] in self?.announced.append($0) }
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)

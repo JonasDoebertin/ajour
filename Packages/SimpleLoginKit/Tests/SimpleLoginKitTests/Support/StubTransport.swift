@@ -2,8 +2,13 @@ import Foundation
 import SimpleLoginKit
 
 final class StubTransport: HTTPTransport, @unchecked Sendable {
+    private enum Outcome {
+        case response(status: Int, data: Data)
+        case failure(URLError)
+    }
+
     private let lock = NSLock()
-    private var responses: [(status: Int, data: Data)] = []
+    private var outcomes: [Outcome] = []
     private var recordedRequests: [URLRequest] = []
 
     var requests: [URLRequest] {
@@ -11,16 +16,26 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
     }
 
     func enqueue(status: Int, json: String) {
-        lock.withLock { responses.append((status, Data(json.utf8))) }
+        lock.withLock { outcomes.append(.response(status: status, data: Data(json.utf8))) }
+    }
+
+    func enqueue(error: URLError) {
+        lock.withLock { outcomes.append(.failure(error)) }
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let next: (status: Int, data: Data)? = lock.withLock {
+        let next: Outcome? = lock.withLock {
             recordedRequests.append(request)
-            return responses.isEmpty ? nil : responses.removeFirst()
+            return outcomes.isEmpty ? nil : outcomes.removeFirst()
         }
-        guard let next else { throw URLError(.notConnectedToInternet) }
-        let response = HTTPURLResponse(url: request.url!, statusCode: next.status, httpVersion: nil, headerFields: nil)!
-        return (next.data, response)
+        switch next {
+        case .response(let status, let data):
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (data, response)
+        case .failure(let error):
+            throw error
+        case nil:
+            throw URLError(.notConnectedToInternet)
+        }
     }
 }

@@ -58,6 +58,7 @@ enum AliasActionError: Error, Equatable {
 
     @ObservationIgnored private let keyStore: any APIKeyStoring
     @ObservationIgnored private let transport: any HTTPTransport
+    @ObservationIgnored private let retry: RetryPolicy
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let copyToClipboard: @MainActor (String) -> Void
     /// How long quit and sign-out try to disable aliases before giving up.
@@ -92,10 +93,12 @@ enum AliasActionError: Error, Equatable {
         transport: any HTTPTransport = URLSessionTransport(session: URLSession(configuration: sessionConfiguration())),
         now: @escaping @Sendable () -> Date = Date.init,
         copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy,
-        disableBudget: Duration = .seconds(5)
+        disableBudget: Duration = .seconds(5),
+        retry: RetryPolicy = .standard
     ) {
         self.keyStore = keyStore
         self.transport = transport
+        self.retry = retry
         currentDate = now
         self.copyToClipboard = copyToClipboard
         self.disableBudget = disableBudget
@@ -117,7 +120,7 @@ enum AliasActionError: Error, Equatable {
     func start() -> Task<Void, Never>? {
         var accountLoad: Task<Void, Never>?
         if let key = try? keyStore.load() {
-            connect(SimpleLoginAPI(apiKey: key, transport: transport))
+            connect(SimpleLoginAPI(apiKey: key, transport: transport, retry: retry))
             phase = .signedIn(nil)
             accountLoad = Task { await loadUserInfo() }
         } else {
@@ -148,7 +151,7 @@ enum AliasActionError: Error, Equatable {
 
     /// Only a key the server accepts is saved, so a typo never replaces a working key.
     func signIn(apiKey: String) async throws -> UserInfo {
-        let candidate = SimpleLoginAPI(apiKey: apiKey, transport: transport)
+        let candidate = SimpleLoginAPI(apiKey: apiKey, transport: transport, retry: retry)
         let userInfo = try await candidate.userInfo()
         try keyStore.save(apiKey)
         connect(candidate)

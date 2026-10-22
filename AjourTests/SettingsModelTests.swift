@@ -18,7 +18,7 @@ struct SettingsModelTests {
     ) {
         self.keyStore = keyStore
         self.launchAtLogin = launchAtLogin
-        appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(records: records), transport: transport)
+        appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(records: records), transport: transport, retry: .once)
         settings = SettingsModel(appModel: appModel, launchAtLogin: launchAtLogin.control)
     }
 

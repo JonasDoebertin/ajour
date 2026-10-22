@@ -28,7 +28,8 @@ final class AliasCreationTests {
             transport: transport,
             now: { clock.now },
             copyToClipboard: { [weak self] in self?.copied.append($0) },
-            disableBudget: disableBudget
+            disableBudget: disableBudget,
+            retry: .once
         )
         model.onNewAliasCopied = { [weak self] in self?.announced.append($0) }
         return model

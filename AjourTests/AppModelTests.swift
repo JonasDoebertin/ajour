@@ -18,7 +18,7 @@ struct AppModelTests {
 
     func makeModel() -> AppModel {
         let clock = clock
-        return AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, now: { clock.now })
+        return AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, now: { clock.now }, retry: .once)
     }
 
     func signedInModel() async throws -> AppModel {
@@ -497,7 +497,7 @@ struct AppModelTests {
 
     @Test func signOutWithUnreadableTimerDataKeepsTheKey() async throws {
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
-        let model = AppModel(keyStore: keyStore, timerStore: UnavailableTimerStore(reason: "test"), transport: transport)
+        let model = AppModel(keyStore: keyStore, timerStore: UnavailableTimerStore(reason: "test"), transport: transport, retry: .once)
         _ = try await model.signIn(apiKey: "valid-key")
 
         await #expect(throws: SignOutError.timerDataUnreadable) {

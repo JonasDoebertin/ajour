@@ -23,7 +23,8 @@ final class AllAliasesModelTests {
             timerStore: timerStore,
             transport: transport,
             now: { clock.now },
-            copyToClipboard: { [weak self] in self?.copied.append($0) }
+            copyToClipboard: { [weak self] in self?.copied.append($0) },
+            retry: .once
         )
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         _ = try await appModel.signIn(apiKey: "valid-key")
@@ -149,7 +150,7 @@ final class AllAliasesModelTests {
     }
 
     @Test func openingWhileSignedOutExplainsThatSetupIsMissing() async {
-        let appModel = AppModel(keyStore: InMemoryAPIKeyStore(), timerStore: timerStore, transport: transport)
+        let appModel = AppModel(keyStore: InMemoryAPIKeyStore(), timerStore: timerStore, transport: transport, retry: .once)
         appModel.start()
         let model = makeModel(appModel: appModel)
 
