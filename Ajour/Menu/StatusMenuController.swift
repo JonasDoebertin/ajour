@@ -53,10 +53,9 @@ import Observation
     }
 
     private func showIcon(hasActiveTimers: Bool) {
-        statusItem.button?.image = NSImage(
-            systemSymbolName: hasActiveTimers ? "envelope.badge.fill" : "envelope",
-            accessibilityDescription: "Ajour"
-        )
+        let image = NSImage(named: hasActiveTimers ? "MenuBarGlyphTimers" : "MenuBarGlyphIdle")
+        image?.accessibilityDescription = "Ajour"
+        statusItem.button?.image = image
     }
 
     private func perform(_ action: MenuAction) {
