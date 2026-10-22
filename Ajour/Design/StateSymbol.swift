@@ -22,7 +22,7 @@ enum StateSymbol {
         return image
     }
 
-    private static func tint(for kind: AliasStatus.Kind) -> NSColor {
+    static func tint(for kind: AliasStatus.Kind) -> NSColor {
         switch kind {
         case .enabled: Palette.stateOn
         case .timed: Palette.stateTimed

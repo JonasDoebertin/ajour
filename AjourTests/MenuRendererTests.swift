@@ -27,7 +27,7 @@ struct MenuRendererTests {
         #expect(menu.autoenablesItems == false)
     }
 
-    @Test func rendersHeadersAsSectionHeaders() {
+    @Test func headersBecomeSectionHeaders() {
         let renderer = makeRenderer()
 
         renderer.show([.header("Pinned")])
@@ -36,13 +36,131 @@ struct MenuRendererTests {
         #expect(menu.items.first?.title == "Pinned")
     }
 
+    @Test func actionsCarryTheirSymbol() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([.action("Quit", .quit, symbol: "power"), .submenu("Extend", [], symbol: "goforward.plus")])
+
+        #expect(try #require(menu.items[0].image).isTemplate)
+        #expect(try #require(menu.items[1].image).isTemplate)
+    }
+
+    @Test func noticesShowTitleDetailAndSymbol() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([.notice(title: "Not set up", detail: "Add a SimpleLogin API key to manage your aliases.", symbol: "key")])
+
+        let item = try #require(menu.items.first)
+        #expect(item.attributedTitle?.string == "Not set up\nAdd a SimpleLogin API key to manage your aliases.")
+        #expect(foregroundColor(ofLine: 0, in: item) == .labelColor)
+        #expect(foregroundColor(ofLine: 1, in: item) == .secondaryLabelColor)
+        #expect(item.image != nil)
+        #expect(item.isEnabled == false)
+    }
+
+    @Test func aChangedNoticeUpdatesTheSameItem() throws {
+        let renderer = makeRenderer()
+        renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .action("Quit", .quit)])
+        let item = try #require(menu.items.first)
+
+        renderer.show([.notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "exclamationmark.triangle"), .action("Quit", .quit)])
+
+        #expect(menu.items.first === item)
+        #expect(item.attributedTitle?.string == "Could not reach SimpleLogin.\nCheck your network connection.")
+        #expect(item.image?.accessibilityDescription == NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?.accessibilityDescription)
+    }
+
+    @Test func aliasRowShowsAddressAndStatusLines() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([aliasEntry(email: "travel@alexmorgan.example", status: travelStatus(words: "47:06 left"), children: [])])
+
+        let item = try #require(menu.items.first)
+        #expect(item.attributedTitle?.string == "travel@alexmorgan.example\n47:06 left · off at 14:54")
+        #expect(foregroundColor(ofLine: 0, in: item) == .labelColor)
+        #expect(foregroundColor(ofLine: 1, in: item) == Palette.stateTimed)
+        #expect(item.image?.isTemplate == false)
+        #expect(item.accessibilityLabel() == "travel@alexmorgan.example")
+    }
+
+    @Test func busyAliasRowsUseTheOffColor() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([aliasEntry(status: .make(state: .enabled, activity: .disabling), children: [])])
+
+        let item = try #require(menu.items.first)
+        #expect(item.attributedTitle?.string == "shop@example.com\nDisabling…")
+        #expect(foregroundColor(ofLine: 1, in: item) == Palette.stateOff)
+    }
+
     @Test func rendersAliasRowsAsSubmenusTitledWithTheAddress() throws {
         let renderer = makeRenderer()
 
         renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Copy Address", .copy(email: "shop@example.com"))])])
 
-        #expect(menu.items.first?.title == "shop@example.com")
+        #expect(menu.items.first?.title.components(separatedBy: "\n").first == "shop@example.com")
         #expect(menu.items.first?.submenu?.items.map(\.title) == ["Copy Address"])
+        #expect(menu.items.first?.submenu?.delegate === renderer)
+    }
+
+    @Test func highlightingTurnsTheRowWhite() throws {
+        let renderer = makeRenderer()
+        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let item = try #require(menu.items.first)
+
+        renderer.highlight(item, in: menu)
+
+        #expect(isWhite(item))
+    }
+
+    @Test func movingTheHighlightRestoresThePreviousRow() throws {
+        let renderer = makeRenderer()
+        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: []), aliasEntry(id: 8, email: "other@example.com", status: .make(state: .enabled, activity: nil), children: [])])
+        let first = menu.items[0]
+        let second = menu.items[1]
+
+        renderer.highlight(first, in: menu)
+        renderer.highlight(second, in: menu)
+
+        #expect(foregroundColor(ofLine: 0, in: first) == .labelColor)
+        #expect(foregroundColor(ofLine: 1, in: first) == Palette.stateTimed)
+        #expect(isWhite(second))
+    }
+
+    @Test func closingTheMenuRestoresTheHighlightedRow() throws {
+        let renderer = makeRenderer()
+        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let item = try #require(menu.items.first)
+        renderer.highlight(item, in: menu)
+
+        renderer.resetHighlight()
+
+        #expect(foregroundColor(ofLine: 0, in: item) == .labelColor)
+        #expect(foregroundColor(ofLine: 1, in: item) == Palette.stateTimed)
+    }
+
+    @Test func aCountdownUpdatesTheHighlightedRowInPlace() throws {
+        let renderer = makeRenderer()
+        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let item = try #require(menu.items.first)
+        renderer.highlight(item, in: menu)
+
+        renderer.show([aliasEntry(status: travelStatus(words: "47:05 left"), children: [])])
+
+        #expect(menu.items.first === item)
+        #expect(item.attributedTitle?.string == "shop@example.com\n47:05 left · off at 14:54")
+        #expect(isWhite(item))
+    }
+
+    @Test func aTimerEndingRebuildsTheRow() throws {
+        let renderer = makeRenderer()
+        renderer.show([aliasEntry(status: status(remaining: 1), children: [.action("Disable Now", .disableNow(aliasID: 7))])])
+        let item = try #require(menu.items.first)
+
+        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
+
+        #expect(menu.items.first !== item)
+        #expect(menu.items.first?.attributedTitle?.string == "shop@example.com\nDisabled")
     }
 
     @Test func rendersSubmenusWithTheirOwnEnabledState() throws {
@@ -79,17 +197,6 @@ struct MenuRendererTests {
         #expect(item.submenu === submenu)
     }
 
-    @Test func aChangedLayoutReplacesTheItems() throws {
-        let renderer = makeRenderer()
-        renderer.show([aliasEntry(status: status(remaining: 1), children: [.action("Disable Now", .disableNow(aliasID: 7))])])
-        let item = try #require(menu.items.first)
-
-        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
-
-        #expect(menu.items.first !== item)
-        #expect(menu.items.first?.submenu?.items.map(\.title) == ["Enable for 5 Minutes"])
-    }
-
     @Test func aNewTitleUpdatesTheSameItem() throws {
         let renderer = makeRenderer()
         renderer.show([.submenu("Extend (1)", [.action("1 Hour", .extend(aliasID: 7, duration: .oneHour))])])
@@ -115,8 +222,28 @@ private func status(remaining: TimeInterval) -> AliasStatus {
     .make(state: .timed(remaining: remaining, endsAt: Date(timeIntervalSince1970: 3600), length: 300), activity: nil)
 }
 
-private func aliasEntry(status: AliasStatus, children: [MenuEntry]) -> MenuEntry {
-    .alias(MenuAliasRow(id: 7, email: "shop@example.com", status: status, accessibilityLabel: "shop@example.com"), children)
+private func travelStatus(words: String) -> AliasStatus {
+    AliasStatus(kind: .timed(shareLeft: 0.8), words: words, turnsOff: "off at 14:54")
+}
+
+private func aliasEntry(id: Int = 7, email: String = "shop@example.com", status: AliasStatus, children: [MenuEntry]) -> MenuEntry {
+    .alias(MenuAliasRow(id: id, email: email, status: status, accessibilityLabel: email), children)
+}
+
+@MainActor private func foregroundColor(ofLine line: Int, in item: NSMenuItem) -> NSColor? {
+    guard let title = item.attributedTitle else { return nil }
+    let lines = title.string.components(separatedBy: "\n")
+    let location = lines.prefix(line).reduce(0) { $0 + ($1 as NSString).length + 1 }
+    return title.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor
+}
+
+@MainActor private func isWhite(_ item: NSMenuItem) -> Bool {
+    guard let title = item.attributedTitle else { return false }
+    var allWhite = true
+    title.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: title.length)) { color, _, _ in
+        if color as? NSColor != .white { allWhite = false }
+    }
+    return allWhite
 }
 
 @MainActor final class PerformedActions {

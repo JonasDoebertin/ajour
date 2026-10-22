@@ -43,9 +43,14 @@ import Observation
         liveUpdates = timer
     }
 
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        renderer.highlight(item, in: menu)
+    }
+
     func menuDidClose(_ menu: NSMenu) {
         liveUpdates?.invalidate()
         liveUpdates = nil
+        renderer.resetHighlight()
     }
 
     private func showCurrentEntries() {
