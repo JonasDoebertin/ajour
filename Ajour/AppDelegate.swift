@@ -29,6 +29,7 @@ import SwiftUI
         }
         model.onTimerEvents = { $0.forEach(notifications.post) }
         model.onAliasDisabled = { notifications.removeNotifications(aliasID: $0) }
+        model.onDisableRetriesStopped = { notifications.removeFailedDisableNotification(aliasID: $0) }
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications

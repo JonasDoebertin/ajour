@@ -149,6 +149,27 @@ struct NotificationControllerTests {
         #expect(center.removedIdentifiers == ["disable-failing-7"])
     }
 
+    @Test func anAliasWhoseDisableIsNoLongerRetriedLosesOnlyItsDisableFailure() {
+        let controller = makeController()
+        controller.post(arrival, turnsOffAt: nil)
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
+
+        controller.removeFailedDisableNotification(aliasID: 7)
+
+        #expect(center.removedIdentifiers == ["disable-failing-7"])
+        controller.removeNotifications(aliasID: 7)
+        #expect(center.removedIdentifiers == ["disable-failing-7", "mail-7-1800000000"])
+    }
+
+    @Test func anAliasWithoutADisableFailureLosesNothingWhenItsRetriesStop() {
+        let controller = makeController()
+        controller.post(arrival, turnsOffAt: nil)
+
+        controller.removeFailedDisableNotification(aliasID: 7)
+
+        #expect(center.removedIdentifiers.isEmpty)
+    }
+
     @Test func removedNotificationsAreNotRemovedAgain() {
         let controller = makeController()
         controller.post(arrival, turnsOffAt: nil)

@@ -1063,6 +1063,92 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.records.isEmpty)
     }
 
+    // MARK: - Ending a failing disable
+
+    /// Collects the aliases whose failed disable the engine stops retrying.
+    private func recordingStoppedRetries(of engine: TimerEngine) -> AliasIDLog {
+        let log = AliasIDLog()
+        engine.onDisableRetriesStopped = { log.aliasIDs.append($0) }
+        return log
+    }
+
+    private func makeEngineWithFailingDisable() async throws -> TimerEngine {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.transport("offline")]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        return engine
+    }
+
+    @Test func extendingStopsRetryingAFailedDisable() async throws {
+        let engine = try await makeEngineWithFailingDisable()
+        let log = recordingStoppedRetries(of: engine)
+
+        try engine.extend(aliasID: 1, by: .fiveMinutes)
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func enablingATimedAliasAgainStopsRetryingAFailedDisable() async throws {
+        let engine = try await makeEngineWithFailingDisable()
+        let log = recordingStoppedRetries(of: engine)
+
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func keepingEnabledStopsRetryingAFailedDisable() async throws {
+        let engine = try await makeEngineWithFailingDisable()
+        let log = recordingStoppedRetries(of: engine)
+
+        try engine.cancelTimer(aliasID: 1)
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func aRefusalStopsRetryingAFailedDisable() async throws {
+        let engine = try await makeEngineWithFailingDisable()
+        let log = recordingStoppedRetries(of: engine)
+        api.errors = [forbidden]
+        clock.advance(by: 5)
+
+        #expect(await engine.processDue() == [.disableForbidden(aliasID: 1, email: "one@example.com")])
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func aRefusalThatIsNotReportedAgainStillStopsRetryingAFailedDisable() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        engine.resumeAfterKeyChange()
+        api.errors = [APIError.transport("offline")]
+        _ = await engine.processDue()
+        let log = recordingStoppedRetries(of: engine)
+        api.errors = [forbidden]
+        clock.advance(by: 5)
+
+        #expect(await engine.processDue().isEmpty)
+
+        #expect(log.aliasIDs == [1])
+    }
+
+    @Test func changingATimerWhoseDisableNeverFailedStopsNoRetries() async throws {
+        let engine = makeEngine()
+        let log = recordingStoppedRetries(of: engine)
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+
+        try engine.extend(aliasID: 1, by: .fiveMinutes)
+        try engine.cancelTimer(aliasID: 2)
+
+        #expect(log.aliasIDs.isEmpty)
+    }
+
     // MARK: - Disabling everything (quit, sign-out)
 
     @Test func disableAllDisablesEverythingWithinBudget() async throws {
@@ -1264,8 +1350,8 @@ final class TestClock: @unchecked Sendable {
     // MARK: - Reporting each disabled alias
 
     /// Collects the aliases the engine reports as disabled.
-    private func recordingDisabledAliases(of engine: TimerEngine) -> DisabledAliasLog {
-        let log = DisabledAliasLog()
+    private func recordingDisabledAliases(of engine: TimerEngine) -> AliasIDLog {
+        let log = AliasIDLog()
         engine.onAliasDisabled = { log.aliasIDs.append($0) }
         return log
     }
@@ -1563,7 +1649,8 @@ final class TestClock: @unchecked Sendable {
     }
 }
 
-@MainActor private final class DisabledAliasLog {
+/// The aliases a callback was called for, in order.
+@MainActor private final class AliasIDLog {
     var aliasIDs: [Int] = []
 }
 

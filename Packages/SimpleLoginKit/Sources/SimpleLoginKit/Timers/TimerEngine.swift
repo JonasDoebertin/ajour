@@ -40,6 +40,9 @@ public enum DisableAllOutcome: Equatable, Sendable {
     public private(set) var loadError: TimerStoreError?
     /// Called once per successful disable, as soon as it succeeds, whether it came from expiry, `disableNow`, or `disableAll`.
     @ObservationIgnored public var onAliasDisabled: (@MainActor (Int) -> Void)?
+    /// Called once a failed disable stops being retried while the alias stays enabled: its timer was extended
+    /// or kept enabled, or SimpleLogin refused the disable.
+    @ObservationIgnored public var onDisableRetriesStopped: (@MainActor (Int) -> Void)?
     /// Failures that happen before this date are not reported, and the first one after it is, so a failure
     /// caused by the Mac having just woken up or reconnected does not alarm anyone.
     @ObservationIgnored public var failureReportsResumeAt: Date?
@@ -129,6 +132,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
         try ensureStoreAvailable()
         guard disablesInFlight[aliasID] == nil else { throw TimerEngineError.disableInProgress }
         guard recordIndex(for: aliasID) != nil else { throw TimerEngineError.noTimer }
+        stopRetryingDisable(aliasID: aliasID)
         try removeRecord(aliasID: aliasID)
     }
 
@@ -399,6 +403,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
     /// Returns false as well when the alias is no longer timed.
     private func markForbidden(aliasID: Int) -> Bool {
         guard let index = recordIndex(for: aliasID) else { return false }
+        stopRetryingDisable(aliasID: aliasID)
         failures[aliasID] = .forbidden
         guard records[index].refusalReportedAt == nil else { return false }
         records[index].refusalReportedAt = now()
@@ -442,12 +447,15 @@ public enum DisableAllOutcome: Equatable, Sendable {
     /// An invalid or forbidden key stays so after extending; only a new key clears it.
     private func extendRecord(at index: Int, by duration: AliasDuration) throws -> TimerRecord {
         records[index].expiresAt = now().addingTimeInterval(duration.seconds)
-        let aliasID = records[index].aliasID
-        if case .transient = failures[aliasID] {
-            failures[aliasID] = nil
-        }
+        stopRetryingDisable(aliasID: records[index].aliasID)
         try save()
         return records[index]
+    }
+
+    private func stopRetryingDisable(aliasID: Int) {
+        guard case .transient = failures[aliasID] else { return }
+        failures[aliasID] = nil
+        onDisableRetriesStopped?(aliasID)
     }
 
     private func removeRecord(aliasID: Int) throws {

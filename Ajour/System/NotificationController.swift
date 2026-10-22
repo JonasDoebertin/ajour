@@ -44,7 +44,7 @@ enum NotificationContentFactory {
             nil
         case .disableKeepsFailing(let aliasID, let email, let problem):
             NotificationContent(
-                identifier: "disable-failing-\(aliasID)",
+                identifier: failedDisableIdentifier(aliasID: aliasID),
                 title: "Could not disable alias",
                 body: "\(email) is still enabled. \(reason(for: problem)) Ajour keeps trying.",
                 categoryIdentifier: NotificationIdentifier.disableFailedCategory,
@@ -64,6 +64,11 @@ enum NotificationContentFactory {
                 body: "Re-enter your SimpleLogin API key in Settings."
             )
         }
+    }
+
+    /// The same for every failed disable of an alias, so a new report replaces an earlier one.
+    static func failedDisableIdentifier(aliasID: Int) -> String {
+        "disable-failing-\(aliasID)"
     }
 
     private static func reason(for problem: DisableProblem) -> String {
@@ -195,6 +200,14 @@ enum NotificationResponseRouter {
     func removeNotifications(aliasID: Int) {
         guard let identifiers = aliasNotificationIdentifiers.removeValue(forKey: aliasID) else { return }
         center.removeDeliveredNotifications(withIdentifiers: Array(identifiers))
+    }
+
+    /// Once Ajour stops retrying, "Ajour keeps trying" is no longer true and Try Again would do nothing.
+    /// Mail notifications stay, because the alias is still enabled.
+    func removeFailedDisableNotification(aliasID: Int) {
+        let identifier = NotificationContentFactory.failedDisableIdentifier(aliasID: aliasID)
+        guard aliasNotificationIdentifiers[aliasID]?.remove(identifier) != nil else { return }
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
     nonisolated func handleResponse(categoryIdentifier: String, actionIdentifier: String, userInfo: [AnyHashable: Any]) async {

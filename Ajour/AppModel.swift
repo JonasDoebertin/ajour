@@ -83,6 +83,8 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored var onMailArrivals: ([MailArrival]) -> Void = { _ in }
     /// Called for each alias as soon as the app has disabled it.
     @ObservationIgnored var onAliasDisabled: (Int) -> Void = { _ in }
+    /// Called for each alias whose failed disable stops being retried while the alias stays enabled.
+    @ObservationIgnored var onDisableRetriesStopped: (Int) -> Void = { _ in }
     @ObservationIgnored var onNewAliasCopied: (String) -> Void = { _ in }
     /// Set when timed disables stop because the server rejected the key, until a new key is saved.
     private(set) var apiKeyInvalid = false
@@ -142,6 +144,7 @@ enum AliasActionError: Error, Equatable {
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now, retry: retry)
         engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
+        engine.onDisableRetriesStopped = { [weak self] in self?.onDisableRetriesStopped($0) }
     }
 
     /// A request on a dead connection, for example right after wake, gives up after 15 seconds instead of
