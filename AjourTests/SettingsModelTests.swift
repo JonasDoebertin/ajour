@@ -152,7 +152,7 @@ struct SettingsModelTests {
         try await test.signIn()
         await test.settings.signOut()
 
-        await test.settings.signOutAnyway()
+        await test.settings.signOutAnyway()?.value
 
         #expect(test.appModel.phase == .signedOut)
         #expect(test.settings.blockedSignOut == nil)
@@ -160,12 +160,29 @@ struct SettingsModelTests {
         #expect(!test.settings.isSigningOut)
     }
 
+    @Test func signingOutAnywayTwiceInARowSignsOutOnce() async throws {
+        let test = SettingsModelTests(records: [.running(aliasID: 7)])
+        try await test.signIn()
+        await test.settings.signOut()
+        let session = test.appModel.session
+
+        let first = test.settings.signOutAnyway()
+        let second = test.settings.signOutAnyway()
+        await first?.value
+        await second?.value
+
+        #expect(test.appModel.session == session + 1)
+        #expect(test.appModel.phase == .signedOut)
+        #expect(test.settings.signOutError == nil)
+    }
+
     @Test func anUnsavableTimerFileDuringSignOutAnywayIsExplained() async throws {
         let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)], failsToSave: true)
         let test = SettingsModelTests(timerStore: timerStore)
         try await test.signIn()
+        await test.settings.signOut()
 
-        await test.settings.signOutAnyway()
+        await test.settings.signOutAnyway()?.value
 
         #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
         #expect(test.keyStore.key == "valid-key")
@@ -177,8 +194,9 @@ struct SettingsModelTests {
         let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)])
         let test = SettingsModelTests(keyStore: InMemoryAPIKeyStore(failsToDelete: true), timerStore: timerStore)
         try await test.signIn()
+        await test.settings.signOut()
 
-        await test.settings.signOutAnyway()
+        await test.settings.signOutAnyway()?.value
 
         #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
         #expect(test.settings.signOutError == "The API key could not be removed from the Keychain.")

@@ -46,9 +46,12 @@ import SimpleLoginKit
         await performSignOut { try await appModel.signOut() }
     }
 
-    func signOutAnyway() async {
+    /// Answers a blocked sign-out once: a second click while the sheet closes finds nothing left to answer.
+    @discardableResult
+    func signOutAnyway() -> Task<Void, Never>? {
+        guard blockedSignOut != nil else { return nil }
         blockedSignOut = nil
-        await performSignOut { try await appModel.signOutAnyway() }
+        return Task { await performSignOut { try await appModel.signOutAnyway() } }
     }
 
     private func performSignOut(_ signOut: () async throws -> Void) async {

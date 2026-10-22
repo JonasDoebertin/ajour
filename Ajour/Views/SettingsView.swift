@@ -34,7 +34,7 @@ struct SettingsView: View {
         )) {
             if let error = settings.blockedSignOut {
                 StillEnabledAlert(error: error) {
-                    Task { await settings.signOutAnyway() }
+                    settings.signOutAnyway()
                 } cancel: {
                     settings.blockedSignOut = nil
                 }
