@@ -6,6 +6,7 @@ struct NotificationContent: Equatable {
     let identifier: String
     let title: String
     let body: String
+    var subtitle = ""
     var categoryIdentifier = ""
     var aliasID: Int?
     var playsSound = true
@@ -19,11 +20,17 @@ enum NotificationIdentifier {
 
 enum NotificationContentFactory {
     /// The identifier is derived from the activity, so the same mail seen twice replaces its notification.
-    static func content(for arrival: MailArrival) -> NotificationContent {
+    static func content(
+        for arrival: MailArrival,
+        turnsOffAt: Date?,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> NotificationContent {
         NotificationContent(
             identifier: "mail-\(arrival.aliasID)-\(Int(arrival.timestamp.timeIntervalSince1970))",
             title: "Mail received",
             body: "\(arrival.aliasEmail) from \(arrival.sender)",
+            subtitle: turnsOffAt.map { "Alias turns off at \(AliasStatus.shortTime($0, locale: locale, timeZone: timeZone))" } ?? "",
             categoryIdentifier: NotificationIdentifier.mailReceivedCategory,
             aliasID: arrival.aliasID
         )
@@ -37,7 +44,7 @@ enum NotificationContentFactory {
             NotificationContent(
                 identifier: "disable-failing-\(aliasID)",
                 title: "Could not disable alias",
-                body: "\(email) is still enabled. Will keep trying.",
+                body: "\(email) is still enabled. Check your network connection.",
                 aliasID: aliasID
             )
         case .disableForbidden(let aliasID, let email):
@@ -57,7 +64,7 @@ enum NotificationContentFactory {
     }
 
     static func copied(email: String) -> NotificationContent {
-        NotificationContent(identifier: "alias-copied", title: "Alias copied", body: email, playsSound: false)
+        NotificationContent(identifier: "alias-copied", title: "Alias copied", body: "\(email) is on the clipboard.", playsSound: false)
     }
 }
 
@@ -134,8 +141,8 @@ enum NotificationResponseRouter {
         _ = try? await center.requestAuthorization(options: [.alert, .sound])
     }
 
-    func post(_ arrival: MailArrival) {
-        deliver(NotificationContentFactory.content(for: arrival))
+    func post(_ arrival: MailArrival, turnsOffAt: Date?) {
+        deliver(NotificationContentFactory.content(for: arrival, turnsOffAt: turnsOffAt))
     }
 
     func post(_ event: TimerEvent) {
@@ -189,6 +196,7 @@ enum NotificationResponseRouter {
     private func deliver(_ content: NotificationContent) {
         let notification = UNMutableNotificationContent()
         notification.title = content.title
+        notification.subtitle = content.subtitle
         notification.body = content.body
         notification.categoryIdentifier = content.categoryIdentifier
         if let aliasID = content.aliasID {

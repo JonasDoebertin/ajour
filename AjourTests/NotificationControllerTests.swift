@@ -44,14 +44,24 @@ struct NotificationControllerTests {
         #expect(center.authorizationRequests == [[.alert, .sound]])
     }
 
+    @Test func postingAMailArrivalWithATimerPutsTheTurnOffTimeInTheSubtitle() throws {
+        let controller = makeController()
+
+        controller.post(arrival, turnsOffAt: Date(timeIntervalSince1970: 1_800_018_720))
+
+        let request = try #require(center.addedRequests.only)
+        #expect(request.content.subtitle.hasPrefix("Alias turns off at "))
+    }
+
     @Test func postingAMailArrivalDeliversADisableableNotification() throws {
         let controller = makeController()
 
-        controller.post(arrival)
+        controller.post(arrival, turnsOffAt: nil)
 
         let request = try #require(center.addedRequests.only)
         #expect(request.identifier == "mail-7-1800000000")
         #expect(request.content.title == "Mail received")
+        #expect(request.content.subtitle == "")
         #expect(request.content.body == "shop@example.com from login@shop.com")
         #expect(request.content.categoryIdentifier == "MAIL_RECEIVED")
         #expect(request.content.userInfo["aliasID"] as? Int == 7)
@@ -93,7 +103,7 @@ struct NotificationControllerTests {
 
         let request = try #require(center.addedRequests.only)
         #expect(request.content.title == "Alias copied")
-        #expect(request.content.body == "shop@example.com")
+        #expect(request.content.body == "shop@example.com is on the clipboard.")
         #expect(request.content.sound == nil)
     }
 
@@ -101,7 +111,7 @@ struct NotificationControllerTests {
         let controller = makeController()
         let later = MailArrival(aliasID: 7, aliasEmail: "shop@example.com", sender: "news@shop.com", timestamp: arrival.timestamp.addingTimeInterval(60))
         let otherAlias = MailArrival(aliasID: 70, aliasEmail: "news@example.com", sender: "news@shop.com", timestamp: arrival.timestamp)
-        [arrival, later, otherAlias].forEach(controller.post)
+        [arrival, later, otherAlias].forEach { controller.post($0, turnsOffAt: nil) }
 
         controller.removeNotifications(aliasID: 7)
 
@@ -110,7 +120,7 @@ struct NotificationControllerTests {
 
     @Test func anExpiredAliasLosesItsMailNotifications() {
         let controller = makeController()
-        controller.post(arrival)
+        controller.post(arrival, turnsOffAt: nil)
 
         controller.post(.disabled(aliasID: 7, email: "shop@example.com"))
 
@@ -128,7 +138,7 @@ struct NotificationControllerTests {
 
     @Test func removedNotificationsAreNotRemovedAgain() {
         let controller = makeController()
-        controller.post(arrival)
+        controller.post(arrival, turnsOffAt: nil)
         controller.removeNotifications(aliasID: 7)
 
         controller.removeNotifications(aliasID: 7)

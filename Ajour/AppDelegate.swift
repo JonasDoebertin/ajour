@@ -17,7 +17,11 @@ import SwiftUI
         let notifications = NotificationController { aliasID in
             Task { await model.disableNow(aliasID: aliasID) }
         }
-        model.onMailArrivals = { $0.forEach(notifications.post) }
+        model.onMailArrivals = { arrivals in
+            for arrival in arrivals {
+                notifications.post(arrival, turnsOffAt: model.engine.record(for: arrival.aliasID)?.expiresAt)
+            }
+        }
         model.onTimerEvents = { $0.forEach(notifications.post) }
         model.onAliasDisabled = { notifications.removeNotifications(aliasID: $0) }
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }

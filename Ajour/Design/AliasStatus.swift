@@ -91,7 +91,7 @@ struct AliasStatus: Equatable {
         Int((max(0, seconds) / 60).rounded(.up))
     }
 
-    private static func shortTime(_ date: Date, locale: Locale, timeZone: TimeZone) -> String {
+    static func shortTime(_ date: Date, locale: Locale, timeZone: TimeZone) -> String {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: timeZone))
     }
 }
