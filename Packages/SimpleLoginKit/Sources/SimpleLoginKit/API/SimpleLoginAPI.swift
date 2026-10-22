@@ -86,6 +86,8 @@ public struct SimpleLoginAPI: Sendable {
         .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed
     ]
 
+    /// Every request reaches the server: a cached answer could show an alias in a state it has since left,
+    /// and toggling it based on that answer would flip it back.
     private func makeRequest(_ method: String, _ path: String, query: [URLQueryItem], body: (any Encodable)?) throws -> URLRequest {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw APIError.transport("Invalid base URL")
@@ -95,7 +97,7 @@ public struct SimpleLoginAPI: Sendable {
         guard let url = components.url else {
             throw APIError.transport("Invalid request URL")
         }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.setValue(apiKey, forHTTPHeaderField: "Authentication")
         if let body {

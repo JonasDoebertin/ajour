@@ -13,6 +13,13 @@ import Testing
         #expect(stub.requests[0].value(forHTTPHeaderField: "Authentication") == "secret")
     }
 
+    @Test func anAliasIsAlwaysReadFromTheServerInsteadOfACache() async throws {
+        let stub = StubTransport()
+        stub.enqueue(status: 200, json: Fixtures.aliasJSON)
+        _ = try await SimpleLoginAPI(apiKey: "x", transport: stub, retry: .once).alias(id: 7)
+        #expect(stub.requests[0].cachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
     @Test func status401MapsToUnauthorized() async {
         let stub = StubTransport(); stub.enqueue(status: 401, json: #"{"error":"Wrong api key"}"#)
         await #expect(throws: APIError.unauthorized) { try await SimpleLoginAPI(apiKey: "x", transport: stub, retry: .once).userInfo() }
