@@ -36,6 +36,8 @@ enum AliasActionError: Error, Equatable {
 
     private(set) var phase: Phase = .loading
     private(set) var pinned: [Alias] = []
+    /// False until a pinned refresh succeeds for the current key.
+    private(set) var pinnedLoaded = false
     private(set) var now: Date
     /// The reason the last alias action failed, until an action succeeds or the key changes.
     private(set) var lastError: String? {
@@ -188,6 +190,7 @@ enum AliasActionError: Error, Equatable {
         }
         guard session == self.session, revision == pinnedRevision else { return }
         pinned = loaded
+        pinnedLoaded = true
     }
 
     var menuSections: MenuSections {
@@ -201,6 +204,7 @@ enum AliasActionError: Error, Equatable {
             apiKeyInvalid: apiKeyInvalid,
             timerDataUnreadable: engine.loadError != nil,
             sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
+            pinnedLoaded: pinnedLoaded,
             activities: activities,
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -586,6 +590,7 @@ enum AliasActionError: Error, Equatable {
 
     private func connect(_ api: SimpleLoginAPI?) {
         session += 1
+        pinnedLoaded = false
         enabledChanges = [:]
         lastError = nil
         apiKeyInvalid = false

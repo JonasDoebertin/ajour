@@ -24,6 +24,8 @@ struct MenuState {
     var apiKeyInvalid = false
     var timerDataUnreadable = false
     var sections = MenuSections(timedUnpinned: [], pinned: [])
+    /// False until the pinned list has loaded for the current key, so the menu doesn't call it empty before.
+    var pinnedLoaded = false
     var activities: [Int: AliasActivity] = [:]
     var lastErrorIsNetwork = false
     var reducesMotion = false
@@ -146,7 +148,11 @@ indirect enum MenuEntry: Equatable {
             entries += [.header("Timers")] + aliasRows(state.sections.timedUnpinned, pinned: false, state: state)
         }
         entries.append(.header("Pinned"))
-        entries += state.sections.pinned.isEmpty ? [noPinnedAliases] : aliasRows(state.sections.pinned, pinned: true, state: state)
+        if !state.sections.pinned.isEmpty {
+            entries += aliasRows(state.sections.pinned, pinned: true, state: state)
+        } else if state.pinnedLoaded {
+            entries.append(noPinnedAliases)
+        }
         entries.append(.separator)
         return entries
     }

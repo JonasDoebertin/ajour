@@ -13,6 +13,7 @@ struct MenuEntryTests {
         lastError: String? = nil,
         lastErrorIsNetwork: Bool = false,
         sections: MenuSections = MenuSections(timedUnpinned: [], pinned: []),
+        pinnedLoaded: Bool = true,
         activities: [Int: Ajour.AliasActivity] = [:],
         reducesMotion: Bool = false
     ) -> MenuState {
@@ -20,6 +21,7 @@ struct MenuEntryTests {
             phase: phase,
             lastError: lastError,
             sections: sections,
+            pinnedLoaded: pinnedLoaded,
             activities: activities,
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: reducesMotion,
@@ -172,6 +174,12 @@ struct MenuEntryTests {
             .notice(title: "No pinned aliases yet", detail: "Open All Aliases, right-click an alias and choose Pin to keep it here.", symbol: "pin"),
             .separator,
         ])
+    }
+
+    @Test func beforeThePinnedListLoadsOnlyItsHeaderShows() {
+        let entries = MenuEntry.entries(for: state(pinnedLoaded: false))
+
+        #expect(entries.prefix(2) == [.header("Pinned"), .separator])
     }
 
     @Test func aliasRowsCarryStatusAndSpokenLabel() throws {

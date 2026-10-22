@@ -562,6 +562,39 @@ struct AppModelTests {
         #expect(pinnedChanged.isSet == false)
     }
 
+    @Test func thePinnedListCountsAsLoadedOnceARefreshSucceeds() async throws {
+        let model = try await signedInModel()
+        #expect(model.menuState(at: clock.now).pinnedLoaded == false)
+
+        await model.refreshPinned()
+        #expect(model.menuState(at: clock.now).pinnedLoaded == false)
+
+        transport.enqueue("/api/v2/aliases", json: #"{"aliases":[]}"#)
+        await model.refreshPinned()
+        #expect(model.menuState(at: clock.now).pinnedLoaded)
+    }
+
+    @Test func aKeyChangeForgetsThatThePinnedListLoaded() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        await model.refreshPinned()
+
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        _ = try await model.signIn(apiKey: "other-account-key")
+
+        #expect(model.menuState(at: clock.now).pinnedLoaded == false)
+    }
+
+    @Test func signOutForgetsThatThePinnedListLoaded() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
+        await model.refreshPinned()
+
+        try await model.signOut()
+
+        #expect(model.menuState(at: clock.now).pinnedLoaded == false)
+    }
+
     @Test func signOutForgetsPinnedAliases() async throws {
         let model = try await signedInModel()
         transport.enqueue("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 1...3))
