@@ -34,6 +34,7 @@ struct SettingsView: View {
                 Task { await settings.signOutAnyway() }
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: { error in
             Text(error.userMessage)
         }
