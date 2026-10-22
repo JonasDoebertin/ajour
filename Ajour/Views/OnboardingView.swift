@@ -288,8 +288,9 @@ private struct ProgressDots: View {
                     .frame(width: step == progress.step ? 16 : 6, height: 6)
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(progress.step) of \(progress.total)")
+        .accessibilityRepresentation {
+            Text("Step \(progress.step) of \(progress.total)")
+        }
     }
 }
 
