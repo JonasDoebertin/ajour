@@ -42,7 +42,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
     /// Called once per successful disable, as soon as it succeeds, whether it came from expiry, `disableNow`, or `disableAll`.
     @ObservationIgnored public var onAliasDisabled: (@MainActor (Int) -> Void)?
     /// Called once a failed disable stops being retried while the alias stays enabled: its timer was extended
-    /// or kept enabled, or SimpleLogin refused the disable.
+    /// or kept enabled, SimpleLogin refused the disable, or the key became invalid.
     @ObservationIgnored public var onDisableRetriesStopped: (@MainActor (Int) -> Void)?
     /// Failures that happen before this date are not reported, and the first one after it is, so a failure
     /// caused by the Mac having just woken up or reconnected does not alarm anyone.
@@ -153,7 +153,8 @@ public enum DisableAllOutcome: Equatable, Sendable {
 
     /// Disables every alias whose timer is due, all at once, so a slow disable never holds back another one.
     /// Events come in the order of the timers. A rejected key ends the pass: the attempts still running
-    /// are cancelled, and only the rejection is reported from then on.
+    /// are cancelled, and only the rejection is reported from then on. A failing disable is not reported
+    /// when it stopped being retried before the pass ended, for example because the key became invalid.
     public func processDue() async -> [TimerEvent] {
         guard api != nil else { return [] }
         let attempts = records.filter(isDue).map { record in
@@ -188,7 +189,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
                 }
             }
         }
-        let events = attempts.compactMap { eventsByAliasID[$0.aliasID] }
+        let events = attempts.compactMap { eventsByAliasID[$0.aliasID] }.filter(isStillRetried)
         return keyBecameInvalid ? events + [.unauthorized] : events
     }
 
@@ -400,6 +401,12 @@ public enum DisableAllOutcome: Equatable, Sendable {
         case .transient(_, _, let nextRetryAt, _): return nextRetryAt <= currentDate
         case nil: return true
         }
+    }
+
+    private func isStillRetried(_ event: TimerEvent) -> Bool {
+        guard case .disableKeepsFailing(let aliasID, _, _) = event else { return true }
+        guard case .transient = failures[aliasID] else { return false }
+        return true
     }
 
     /// Returns whether the key just became invalid, as opposed to already being known as invalid.

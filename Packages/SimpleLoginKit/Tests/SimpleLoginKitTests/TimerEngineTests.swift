@@ -1042,14 +1042,54 @@ final class TestClock: @unchecked Sendable {
     }
 
     @Test func theKeyBecomingInvalidStopsRetryNotifications() async throws {
-        let engine = try await makeEngineWithFailingDisable()
+        let engine = makeEngine()
+        api.aliases[3] = .fixture(id: 3, email: "three@example.com")
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 3, for: .oneHour)
+        api.errorsByAliasID = [1: [APIError.transport("offline")], 2: [APIError.transport("offline")]]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
         let log = recordingStoppedRetries(of: engine)
-        api.errors = [APIError.unauthorized]
+        api.errorsByAliasID = [1: [APIError.unauthorized], 2: [APIError.unauthorized]]
         clock.advance(by: 5)
 
         #expect(await engine.processDue() == [.unauthorized])
 
-        #expect(log.aliasIDs == [1])
+        #expect(log.aliasIDs == [1, 2])
+    }
+
+    @Test func aFailingDisableIsNotReportedWhenTheKeyBecomesInvalidLaterInThePass() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [2])
+        api.errorsByAliasID = [1: [APIError.transport("offline")], 2: [APIError.unauthorized]]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.failures[1] != nil }
+        gated.open()
+
+        #expect(await events == [.unauthorized])
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+    }
+
+    @Test func aFailingDisableIsNotReportedWhenAnotherPassFindsTheKeyInvalid() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [2])
+        api.errorsByAliasID = [
+            1: [APIError.transport("offline"), APIError.unauthorized],
+            2: [APIError.unauthorized],
+        ]
+        clock.advance(by: 300)
+        async let eventsOfFirstPass = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.failures[1] != nil }
+
+        clock.advance(by: 5)
+        #expect(await engine.processDue() == [.unauthorized])
+        gated.open()
+
+        #expect(await eventsOfFirstPass.isEmpty)
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
     }
 
     @Test func anAliasWhoseDisableRunsIsNotDue() async throws {
