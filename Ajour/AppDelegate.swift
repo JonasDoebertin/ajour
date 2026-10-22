@@ -14,9 +14,14 @@ import SwiftUI
 
     override init() {
         let model = Self.makeAppModel()
-        let notifications = NotificationController { aliasID in
-            Task { await model.disableNow(aliasID: aliasID) }
-        }
+        let notifications = NotificationController(
+            onDisableRequested: { aliasID in
+                Task { await model.disableNow(aliasID: aliasID) }
+            },
+            onRetryRequested: { aliasID in
+                Task { await model.retryDisable(aliasID: aliasID) }
+            }
+        )
         model.onMailArrivals = { arrivals in
             for arrival in arrivals {
                 notifications.post(arrival, turnsOffAt: model.engine.record(for: arrival.aliasID)?.expiresAt)

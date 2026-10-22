@@ -48,9 +48,10 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 3. Repeat, using the "Disable Now" button on the notification instead (hover the banner or open the notification's options).
 4. Disable a timed alias from the menu while its "Mail received" notification is still in Notification Center. The notification disappears.
 5. Quit the app while a "Mail received" notification is still in Notification Center, then click it. The app launches and the alias gets disabled.
-6. Turn off Wi-Fi, let a shortened timer expire, and wait 2 minutes. One "Could not disable alias" notification appears. Turn Wi-Fi back on: the alias gets disabled and that notification is withdrawn.
-7. Revoke the API key in the SimpleLogin web app while a timer runs, and let it expire. One "API key invalid" notification appears, and the menu shows "API key invalid – Re-enter Key…". Choose it, enter a valid key, and the menu item disappears while the pending disable runs.
-8. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > Ajour.
+6. Turn off Wi-Fi and let a shortened timer expire. Within seconds, one "Could not disable alias" notification names the reason and offers Try Again. The row reads "Not disabled · retrying". Turn Wi-Fi back on and click Try Again: the alias gets disabled, and the notification and row update.
+7. Sleep the Mac past a timer's end with Wi-Fi off, wake it, and turn Wi-Fi on within 2 minutes: no notification appears, and the alias gets disabled.
+8. Revoke the API key in the SimpleLogin web app while a timer runs, and let it expire. One "API key invalid" notification appears, and the menu shows "API key invalid – Re-enter Key…". Choose it, enter a valid key, and the menu item disappears while the pending disable runs.
+9. Check that notification permission was requested at the end of onboarding: System Settings > Notifications > Ajour.
 
 ## Creating aliases
 
