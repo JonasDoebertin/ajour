@@ -155,10 +155,99 @@ final class NewAliasModelTests {
 
         await model.create()
 
-        #expect(model.errorMessage == "Prefix can only contain letters")
+        #expect(model.errorMessage == "Could not create the alias. Prefix can only contain letters")
         #expect(model.isComplete == false)
         #expect(model.isCreating == false)
         #expect(copied.isEmpty)
+    }
+
+    @Test func previewJoinsPrefixAndSuffix() async throws {
+        enqueueChoices(suffixes: [Fixtures.suffixJSON("@alexmorgan.example", isCustom: true)])
+        let (model, _) = try await loadedModel()
+        model.prefix = " concert-tickets "
+
+        #expect(model.previewAddress == "concert-tickets@alexmorgan.example")
+
+        model.prefix = "  "
+        #expect(model.previewAddress == nil)
+    }
+
+    @Test func previewWaitsForSuffixes() async throws {
+        let model = NewAliasModel(appModel: try await signedInAppModel())
+        model.prefix = "shop"
+
+        #expect(model.previewAddress == nil)
+    }
+
+    @Test func expiryNoteNamesTheDuration() async throws {
+        let model = NewAliasModel(appModel: try await signedInAppModel())
+
+        model.expiry = .fiveMinutes
+        #expect(model.expiryNote == "off after 5 minutes")
+        model.expiry = .oneHour
+        #expect(model.expiryNote == "off after 1 hour")
+        model.expiry = .twentyFourHours
+        #expect(model.expiryNote == "off after 24 hours")
+        model.expiry = nil
+        #expect(model.expiryNote == nil)
+    }
+
+    @Test func suffixesSplitIntoOwnAndShared() async throws {
+        enqueueChoices(suffixes: [
+            Fixtures.suffixJSON("@simplelogin.com", isCustom: false),
+            Fixtures.suffixJSON("@my.dev", isCustom: true),
+            Fixtures.suffixJSON("@aleeas.com", isCustom: false),
+            Fixtures.suffixJSON("@other.dev", isCustom: true),
+        ])
+
+        let (model, _) = try await loadedModel()
+
+        #expect(model.customSuffixes.map(\.suffix) == ["@my.dev", "@other.dev"])
+        #expect(model.sharedSuffixes.map(\.suffix) == ["@simplelogin.com", "@aleeas.com"])
+    }
+
+    @Test func submitTitleFollowsTheCreateProgress() async throws {
+        enqueueChoices()
+        let (model, _) = try await loadedModel()
+        model.prefix = "shop"
+        #expect(model.submitTitle == "Create")
+
+        transport.holdNext("/api/v3/alias/custom/new", method: "POST", status: 503, json: #"{"error":"SimpleLogin is not responding. Try again in a moment."}"#)
+        let create = Task { await model.create() }
+        await transport.waitUntilARequestIsHeld()
+        #expect(model.submitTitle == "Creating…")
+
+        transport.release()
+        await create.value
+        #expect(model.submitTitle == "Try Again")
+    }
+
+    @Test func failedCreateOffersTryAgain() async throws {
+        enqueueChoices()
+        let (model, _) = try await loadedModel()
+        model.prefix = "shop"
+        transport.enqueue("/api/v3/alias/custom/new", method: "POST", status: 503, json: #"{"error":"SimpleLogin is not responding. Try again in a moment."}"#)
+
+        await model.create()
+
+        #expect(model.errorMessage == "Could not create the alias. SimpleLogin is not responding. Try again in a moment.")
+        #expect(model.submitTitle == "Try Again")
+        #expect(model.canSubmit)
+    }
+
+    @Test func tryAgainResubmitsAndClearsTheErrorOnSuccess() async throws {
+        enqueueChoices()
+        let (model, _) = try await loadedModel()
+        model.prefix = "shop"
+        transport.enqueue("/api/v3/alias/custom/new", method: "POST", status: 503, json: #"{"error":"SimpleLogin is not responding. Try again in a moment."}"#)
+        await model.create()
+        enqueueCreated()
+
+        await model.create()
+
+        #expect(model.isComplete)
+        #expect(model.errorMessage == nil)
+        #expect(copied == ["shop@my.dev"])
     }
 
     @Test func theChosenExpiryStartsATimer() async throws {
@@ -204,5 +293,6 @@ final class NewAliasModelTests {
         #expect(model.isComplete == false)
         #expect(model.errorMessage == nil)
         #expect(model.suffixes.isEmpty)
+        #expect(model.submitTitle == "Create")
     }
 }

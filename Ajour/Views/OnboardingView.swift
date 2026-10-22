@@ -240,21 +240,6 @@ struct OnboardingView: View {
     }
 }
 
-private struct FormGroup<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-    }
-}
-
 private struct Feature: View {
     let symbol: String
     let title: String
@@ -278,19 +263,6 @@ private struct Feature: View {
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct InlineError: View {
-    let message: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.circle")
-            Text(message)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .foregroundStyle(Palette.color(Palette.danger))
     }
 }
 
