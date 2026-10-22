@@ -40,7 +40,7 @@ enum NotificationContentFactory {
         switch event {
         case .disabled:
             nil
-        case .disableKeepsFailing(let aliasID, let email):
+        case .disableKeepsFailing(let aliasID, let email, _):
             NotificationContent(
                 identifier: "disable-failing-\(aliasID)",
                 title: "Could not disable alias",

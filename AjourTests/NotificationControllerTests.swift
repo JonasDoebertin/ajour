@@ -72,7 +72,7 @@ struct NotificationControllerTests {
     @Test func postingAPersistentDisableFailureDeliversANotification() throws {
         let controller = makeController()
 
-        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com"))
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
 
         let request = try #require(center.addedRequests.only)
         #expect(request.content.title == "Could not disable alias")
@@ -129,7 +129,7 @@ struct NotificationControllerTests {
 
     @Test func aDisabledAliasLosesItsStaleDisableFailure() {
         let controller = makeController()
-        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com"))
+        controller.post(.disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable))
 
         controller.post(.disabled(aliasID: 7, email: "shop@example.com"))
 

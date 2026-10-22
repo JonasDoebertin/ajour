@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 public enum DisableFailure: Equatable, Sendable {
-    case transient(firstFailedAt: Date, attempts: Int, nextRetryAt: Date, reported: Bool)
+    case transient(problem: DisableProblem, attempts: Int, nextRetryAt: Date, reported: Bool)
     case unauthorized
     /// The current key may not change the alias, so retrying with it is pointless.
     case forbidden
@@ -10,7 +10,7 @@ public enum DisableFailure: Equatable, Sendable {
 
 public enum TimerEvent: Equatable, Sendable {
     case disabled(aliasID: Int, email: String)
-    case disableKeepsFailing(aliasID: Int, email: String)
+    case disableKeepsFailing(aliasID: Int, email: String, problem: DisableProblem)
     case disableForbidden(aliasID: Int, email: String)
     case unauthorized
 }
@@ -31,9 +31,13 @@ public enum TimerEngineError: Error, Equatable {
     public private(set) var loadError: TimerStoreError?
     /// Called once per successful disable, as soon as it succeeds, whether it came from expiry, `disableNow`, or `disableAll`.
     @ObservationIgnored public var onAliasDisabled: (@MainActor (Int) -> Void)?
+    /// Failures that happen before this date are not reported, and the first one after it is, so a failure
+    /// caused by the Mac having just woken up or reconnected does not alarm anyone.
+    @ObservationIgnored public var failureReportsResumeAt: Date?
+    /// The aliases with a disable in flight, for showing that they are being turned off.
+    public private(set) var disablingAliasIDs: Set<Int> = []
 
-    private static let retryDelays: [TimeInterval] = [5, 10, 20, 40, 60]
-    private static let failureReportDelay: TimeInterval = 120
+    private static let retryDelays: [TimeInterval] = [5, 10, 20, 40, 60, 120]
 
     private let store: any TimerStore
     private let now: @Sendable () -> Date
@@ -147,10 +151,10 @@ public enum TimerEngineError: Error, Equatable {
                 events.append(.disableForbidden(aliasID: aliasID, email: record.email))
             case .cancelled:
                 return events
-            case .failed:
+            case .failed(let error):
                 if Task.isCancelled { return events }
-                if registerTransientFailure(aliasID: aliasID) {
-                    events.append(.disableKeepsFailing(aliasID: aliasID, email: record.email))
+                if let problem = registerTransientFailure(aliasID: aliasID, error: error) {
+                    events.append(.disableKeepsFailing(aliasID: aliasID, email: record.email, problem: problem))
                 }
             }
         }
@@ -183,6 +187,12 @@ public enum TimerEngineError: Error, Equatable {
             case nil: record.expiresAt
             }
         }.min()
+    }
+
+    /// Makes the next retry of a failed disable due now. Anything but a failed disable waiting to be retried is left alone.
+    public func retryNow(aliasID: Int) {
+        guard case .transient(let problem, let attempts, _, let reported) = failures[aliasID] else { return }
+        failures[aliasID] = .transient(problem: problem, attempts: attempts, nextRetryAt: now(), reported: reported)
     }
 
     public func resumeAfterKeyChange() {
@@ -250,6 +260,7 @@ public enum TimerEngineError: Error, Equatable {
         let attempt = Task {
             let outcome = await Self.attemptDisable(aliasID: aliasID, using: aliasSwitch, keyGeneration: generation)
             disablesInFlight[aliasID] = nil
+            disablingAliasIDs.remove(aliasID)
             if case .disabled = outcome {
                 try? removeRecord(aliasID: aliasID)
                 onAliasDisabled?(aliasID)
@@ -257,6 +268,7 @@ public enum TimerEngineError: Error, Equatable {
             return outcome
         }
         disablesInFlight[aliasID] = attempt
+        disablingAliasIDs.insert(aliasID)
         return attempt
     }
 
@@ -319,35 +331,40 @@ public enum TimerEngineError: Error, Equatable {
         return !wasAlreadyUnauthorized
     }
 
-    /// Returns whether the alias is still timed and so now waits for a new key.
+    /// Returns whether the refusal should be reported: once per timer, however often the key changes.
+    /// Returns false as well when the alias is no longer timed.
     private func markForbidden(aliasID: Int) -> Bool {
-        guard recordIndex(for: aliasID) != nil else { return false }
+        guard let index = recordIndex(for: aliasID) else { return false }
         failures[aliasID] = .forbidden
+        guard records[index].refusalReportedAt == nil else { return false }
+        records[index].refusalReportedAt = now()
+        try? save()
         return true
     }
 
-    /// Returns whether the failure has now lasted long enough to be reported, which happens once.
-    /// A record extended while the attempt was running is no longer due, so its failure is discarded.
-    private func registerTransientFailure(aliasID: Int) -> Bool {
+    /// Returns the problem to report when this failure is the first of its run and reporting is not paused;
+    /// a run is reported once. A record extended while the attempt was running is no longer due,
+    /// so its failure is discarded.
+    private func registerTransientFailure(aliasID: Int, error: any Error) -> DisableProblem? {
         let failedAt = now()
-        guard let record = record(for: aliasID), record.expiresAt <= failedAt else { return false }
-        var firstFailedAt = failedAt
+        guard let record = record(for: aliasID), record.expiresAt <= failedAt else { return nil }
+        let problem = DisableProblem(error: error)
         var attempts = 1
         var reported = false
-        if case .transient(let previousFirstFailedAt, let previousAttempts, _, let previousReported) = failures[aliasID] {
-            firstFailedAt = previousFirstFailedAt
+        if case .transient(_, let previousAttempts, _, let previousReported) = failures[aliasID] {
             attempts = previousAttempts + 1
             reported = previousReported
         }
         let delay = Self.retryDelays[min(attempts, Self.retryDelays.count) - 1]
-        let shouldReport = !reported && failedAt.timeIntervalSince(firstFailedAt) >= Self.failureReportDelay
+        let reportsArePaused = failureReportsResumeAt.map { failedAt < $0 } ?? false
+        let shouldReport = !reported && !reportsArePaused
         failures[aliasID] = .transient(
-            firstFailedAt: firstFailedAt,
+            problem: problem,
             attempts: attempts,
             nextRetryAt: failedAt.addingTimeInterval(delay),
             reported: reported || shouldReport
         )
-        return shouldReport
+        return shouldReport ? problem : nil
     }
 
     nonisolated private static func isCancellation(_ error: any Error) -> Bool {

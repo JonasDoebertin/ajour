@@ -41,6 +41,18 @@ struct TimerStoreTests {
         #expect(try store.load() == records)
     }
 
+    @Test func aTimerFileWithoutRefusalStillLoads() throws {
+        let json = """
+        [{"aliasID": 1, "email": "one@example.com", "enabledAt": "2023-11-14T22:13:20Z", "expiresAt": "2023-11-14T22:18:20Z"}]
+        """
+        try Data(json.utf8).write(to: fileURL)
+
+        let records = try FileTimerStore(fileURL: fileURL).load()
+
+        #expect(records.count == 1)
+        #expect(records[0].refusalReportedAt == nil)
+    }
+
     @Test func missingFileLoadsEmpty() throws {
         let store = FileTimerStore(fileURL: fileURL)
 

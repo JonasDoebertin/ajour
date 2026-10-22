@@ -71,13 +71,13 @@ struct NotificationContentFactoryTests {
     }
 
     @Test func failingDisableAsksToCheckTheNetwork() throws {
-        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "signups@alexmorgan.example")))
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "signups@alexmorgan.example", problem: .unreachable)))
 
         #expect(content.body == "signups@alexmorgan.example is still enabled. Check your network connection.")
     }
 
     @Test func persistentDisableFailureSaysTheAliasIsStillEnabled() throws {
-        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com")))
+        let content = try #require(NotificationContentFactory.content(for: .disableKeepsFailing(aliasID: 7, email: "shop@example.com", problem: .unreachable)))
 
         #expect(content.title == "Could not disable alias")
         #expect(content.body == "shop@example.com is still enabled. Check your network connection.")
