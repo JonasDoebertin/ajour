@@ -38,22 +38,22 @@ import SwiftUI
         windows = WindowCoordinator { kind, windows in
             switch kind {
             case .onboarding:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     OnboardingView(model: onboarding) { [weak windows] in windows?.close(.onboarding) },
                     fitsContent: true
                 )
             case .newAlias:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     NewAliasView(model: newAlias) { [weak windows] in windows?.close(.newAlias) },
                     fitsContent: true
                 )
             case .allAliases:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     AllAliasesView(model: allAliases, appModel: model),
                     fitsContent: false
                 )
             case .settings:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     SettingsView(appModel: model, settings: settings, onboarding: onboarding) { [weak windows] in
                         windows?.show(.onboarding)
                     },

@@ -29,7 +29,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
         .onAppear { settings.refreshLaunchAtLogin() }
         .task { await settings.refreshAccount() }
         .alert("Could Not Sign Out", isPresented: Binding(

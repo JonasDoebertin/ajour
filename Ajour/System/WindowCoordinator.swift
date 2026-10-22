@@ -72,13 +72,19 @@ extension WindowCoordinator.Kind {
     }
 }
 
-extension NSHostingController {
-    /// Bridges toolbars and search fields into the window. A window that isn't resizable follows the size of
-    /// its content instead.
-    static func windowContent(_ rootView: Content, fitsContent: Bool) -> NSHostingController<Content> {
-        let controller = NSHostingController(rootView: rootView)
+@MainActor enum WindowContent {
+    /// Bridges toolbar items into the window. A window that isn't resizable follows the size of its content
+    /// instead: its views take the height they need, so wrapped text is never cut off. Sizing such a window by
+    /// its preferred content size made AppKit stop the app in an endless layout loop.
+    static func hosting(_ rootView: some View, fitsContent: Bool) -> NSViewController {
+        guard fitsContent else { return bridgingToolbars(NSHostingController(rootView: rootView)) }
+        let controller = NSHostingController(rootView: rootView.fixedSize(horizontal: false, vertical: true))
+        controller.sizingOptions = .intrinsicContentSize
+        return bridgingToolbars(controller)
+    }
+
+    private static func bridgingToolbars<Content: View>(_ controller: NSHostingController<Content>) -> NSViewController {
         controller.sceneBridgingOptions = .all
-        if fitsContent { controller.sizingOptions = .preferredContentSize }
         return controller
     }
 }
