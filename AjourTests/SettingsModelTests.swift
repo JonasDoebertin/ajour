@@ -160,7 +160,7 @@ struct SettingsModelTests {
         #expect(!test.settings.isSigningOut)
     }
 
-    @Test func signingOutAnywayThatCannotForgetTheTimersExplainsWhy() async throws {
+    @Test func anUnsavableTimerFileDuringSignOutAnywayIsExplained() async throws {
         let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)], failsToSave: true)
         let test = SettingsModelTests(timerStore: timerStore)
         try await test.signIn()
@@ -169,7 +169,8 @@ struct SettingsModelTests {
 
         #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
         #expect(test.keyStore.key == "valid-key")
-        #expect(test.settings.signOutError == SignOutError.timerDataUnreadable.userMessage)
+        #expect(test.settings.signOutError == SignOutError.timersNotSaved.userMessage)
+        #expect(test.settings.blockedSignOut == nil)
     }
 
     @Test func signingOutAnywayThatCannotRemoveTheKeyExplainsWhyAndKeepsTheTimers() async throws {

@@ -59,7 +59,7 @@ import SimpleLoginKit
         } catch let error as SignOutError {
             switch error {
             case .aliasesStillEnabled: blockedSignOut = error
-            case .timerDataUnreadable: signOutError = error.userMessage
+            case .timerDataUnreadable, .timersNotSaved: signOutError = error.userMessage
             }
         } catch {
             signOutError = "The API key could not be removed from the Keychain."

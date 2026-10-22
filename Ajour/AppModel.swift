@@ -21,13 +21,14 @@ enum SignOutError: Error, Equatable {
     /// Aliases sorted by email, plus the number of enables and creations still running when sign-out gave up waiting.
     case aliasesStillEnabled([StillEnabledAlias], pendingEnables: Int)
     case timerDataUnreadable
+    case timersNotSaved
 
     var title: String {
         switch self {
         case .aliasesStillEnabled(let aliases, let pendingEnables):
             let total = aliases.count + pendingEnables
             return total == 1 ? "An Alias Is Still Enabled" : "\(total) Aliases Are Still Enabled"
-        case .timerDataUnreadable:
+        case .timerDataUnreadable, .timersNotSaved:
             return "Could Not Sign Out"
         }
     }
@@ -44,6 +45,8 @@ enum SignOutError: Error, Equatable {
             return lines.joined(separator: "\n") + "\n\nIf you sign out anyway, \(consequence) enabled."
         case .timerDataUnreadable:
             return "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases."
+        case .timersNotSaved:
+            return "The timer file could not be saved. Sign-out is blocked to avoid losing track of enabled aliases."
         }
     }
 }
@@ -222,17 +225,24 @@ enum AliasActionError: Error, Equatable {
     /// Leaves aliases that stay enabled as they are: their timers are forgotten, because without the key
     /// nothing could disable them. Stops before removing the key if the timers can't be forgotten, and tracks
     /// the timers again if the key can't be removed, so a person who stays signed in keeps every timer.
+    /// A timer file that can't be saved while forgetting or restoring the timers is reported as `timersNotSaved`.
     func signOutAnyway() async throws {
         let discarded: DiscardedTimers
         do {
             discarded = try engine.discardAll()
-        } catch {
+        } catch TimerEngineError.storeUnavailable {
             throw SignOutError.timerDataUnreadable
+        } catch {
+            throw SignOutError.timersNotSaved
         }
         do {
             try removeAccount()
         } catch {
-            try? engine.restore(discarded)
+            do {
+                try engine.restore(discarded)
+            } catch {
+                throw SignOutError.timersNotSaved
+            }
             throw error
         }
     }

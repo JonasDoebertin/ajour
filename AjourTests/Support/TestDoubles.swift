@@ -41,10 +41,14 @@ final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     private let lock = NSLock()
     private var storedRecords: [TimerRecord]
     private let failsToSave: Bool
+    private let savesBeforeFailing: Int?
+    private var saveCount = 0
 
-    init(records: [TimerRecord] = [], failsToSave: Bool = false) {
+    /// `savesBeforeFailing` lets that many saves succeed, then fails every later one.
+    init(records: [TimerRecord] = [], failsToSave: Bool = false, savesBeforeFailing: Int? = nil) {
         storedRecords = records
         self.failsToSave = failsToSave
+        self.savesBeforeFailing = savesBeforeFailing
     }
 
     var records: [TimerRecord] {
@@ -56,8 +60,11 @@ final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     }
 
     func save(_ records: [TimerRecord]) throws {
-        if failsToSave { throw CocoaError(.fileWriteNoPermission) }
-        lock.withLock { storedRecords = records }
+        try lock.withLock {
+            saveCount += 1
+            if failsToSave || saveCount > (savesBeforeFailing ?? .max) { throw CocoaError(.fileWriteNoPermission) }
+            storedRecords = records
+        }
     }
 }
 

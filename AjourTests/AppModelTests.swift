@@ -589,13 +589,43 @@ struct AppModelTests {
         #expect(test.requestCount(path: "/api/aliases/6/toggle") + test.requestCount(path: "/api/aliases/7/toggle") == 0)
     }
 
-    @Test func signOutAnywayKeepsTheKeyWhenTheTimersCannotBeDiscarded() async throws {
+    @Test func signOutAnywayNamesAnUnsavableTimerFile() async throws {
         let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7, at: TestClock().now)], failsToSave: true)
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
         let model = AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, retry: .once)
         _ = try await model.signIn(apiKey: "valid-key")
 
+        await #expect(throws: SignOutError.timersNotSaved) {
+            try await model.signOutAnyway()
+        }
+
+        #expect(keyStore.key == "valid-key")
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+        #expect(model.engine.records.count == 1)
+        #expect(timerStore.records.count == 1)
+    }
+
+    @Test func signOutAnywayNamesUnreadableTimerData() async throws {
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = AppModel(keyStore: keyStore, timerStore: UnavailableTimerStore(reason: "test"), transport: transport, retry: .once)
+        _ = try await model.signIn(apiKey: "valid-key")
+
         await #expect(throws: SignOutError.timerDataUnreadable) {
+            try await model.signOutAnyway()
+        }
+
+        #expect(keyStore.key == "valid-key")
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+    }
+
+    @Test func aFailedRestoreAfterAFailedKeyRemovalNamesTheTimerFile() async throws {
+        let keyStore = InMemoryAPIKeyStore(failsToDelete: true)
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7, at: TestClock().now)], savesBeforeFailing: 1)
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, retry: .once)
+        _ = try await model.signIn(apiKey: "valid-key")
+
+        await #expect(throws: SignOutError.timersNotSaved) {
             try await model.signOutAnyway()
         }
 
@@ -739,6 +769,11 @@ struct AppModelTests {
         #expect(StillEnabledAlias(email: "a@example.com", problem: .other).reason == "SimpleLogin reported an error")
 
         #expect(SignOutError.timerDataUnreadable.userMessage == "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases.")
+    }
+
+    @Test func signOutErrorsExplainAnUnsavableTimerFile() {
+        #expect(SignOutError.timersNotSaved.title == "Could Not Sign Out")
+        #expect(SignOutError.timersNotSaved.userMessage == "The timer file could not be saved. Sign-out is blocked to avoid losing track of enabled aliases.")
     }
 
     @Test func refreshPinnedLoadsPagesUntilAPageIsNotFull() async throws {
