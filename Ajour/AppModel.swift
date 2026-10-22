@@ -355,7 +355,7 @@ enum AliasActionError: Error, Equatable {
     private func disableEverything() async -> Bool {
         let deadline = ContinuousClock.now + disableBudget
         await waitForEnablesInFlight(until: deadline)
-        return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now))
+        return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now)) == .allDisabled
     }
 
     /// Runs an action that can enable an alias before its timer is saved, so quit and sign-out wait for it.

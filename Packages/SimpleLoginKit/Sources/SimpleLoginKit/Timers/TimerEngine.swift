@@ -20,6 +20,15 @@ public enum TimerEngineError: Error, Equatable {
     case storeUnavailable
     case disableInProgress
     case noTimer
+    /// The key changed while an alias was being enabled, so the alias was switched off again instead of timed.
+    case accountChanged
+}
+
+public enum DisableAllOutcome: Equatable, Sendable {
+    case allDisabled
+    /// Every timed alias that stayed enabled, by alias ID.
+    case stillEnabled([Int: DisableProblem])
+    case timerDataUnreadable
 }
 
 @MainActor @Observable public final class TimerEngine {
@@ -81,7 +90,12 @@ public enum TimerEngineError: Error, Equatable {
             return try extendRecord(at: index, by: duration)
         }
         let aliasSwitch = AliasSwitch(api: try signedInAPI(), retry: retry)
+        let generation = keyGeneration
         let alias = try await aliasSwitch.ensureEnabled(aliasID: aliasID)
+        guard generation == keyGeneration else {
+            _ = try? await aliasSwitch.ensureDisabled(aliasID: aliasID)
+            throw TimerEngineError.accountChanged
+        }
         return try startTimer(for: alias, duration: duration)
     }
 
@@ -202,17 +216,18 @@ public enum TimerEngineError: Error, Equatable {
 
     /// Tries to disable every timed alias once, in parallel. Gives up when the budget runs out;
     /// records of aliases that could not be disabled stay for the next launch.
-    /// Returns false when the timer file was unreadable, because aliases it lists may still be enabled.
-    public func disableAll(within budget: Duration) async -> Bool {
-        guard loadError == nil else { return false }
-        guard api != nil else { return records.isEmpty }
+    /// Says why each of those aliases stays enabled, or that the timer file was unreadable
+    /// because aliases it lists may still be enabled.
+    public func disableAll(within budget: Duration) async -> DisableAllOutcome {
+        guard loadError == nil else { return .timerDataUnreadable }
+        guard api != nil else { return stillEnabledOutcome(outcomes: [:]) }
         let aliasIDs = records.map(\.aliasID)
+        var outcomes: [Int: DisableOutcome] = [:]
 
         await withTaskGroup(of: GroupResult.self) { group in
             for aliasID in aliasIDs {
                 group.addTask {
-                    _ = await self.disable(aliasID: aliasID)
-                    return .attemptFinished
+                    .attemptFinished(aliasID: aliasID, outcome: await self.disable(aliasID: aliasID))
                 }
             }
             group.addTask {
@@ -223,13 +238,41 @@ public enum TimerEngineError: Error, Equatable {
             var pendingAttempts = aliasIDs.count
             while pendingAttempts > 0, let result = await group.next() {
                 switch result {
-                case .attemptFinished: pendingAttempts -= 1
-                case .budgetExhausted: pendingAttempts = 0
+                case .attemptFinished(let aliasID, let outcome):
+                    outcomes[aliasID] = outcome
+                    pendingAttempts -= 1
+                case .budgetExhausted:
+                    pendingAttempts = 0
                 }
             }
             group.cancelAll()
         }
-        return records.isEmpty
+        return stillEnabledOutcome(outcomes: outcomes)
+    }
+
+    /// Stops tracking every alias and leaves them as they are.
+    public func discardAll() throws {
+        try ensureStoreAvailable()
+        records = []
+        failures = [:]
+        try save()
+    }
+
+    private func stillEnabledOutcome(outcomes: [Int: DisableOutcome]) -> DisableAllOutcome {
+        guard !records.isEmpty else { return .allDisabled }
+        return .stillEnabled(Dictionary(uniqueKeysWithValues: records.map { record in
+            (record.aliasID, Self.problem(of: outcomes[record.aliasID]))
+        }))
+    }
+
+    /// An attempt that was cancelled or never finished says nothing about why, so the alias counts as out of reach.
+    private static func problem(of outcome: DisableOutcome?) -> DisableProblem {
+        switch outcome {
+        case .unauthorized: .keyRejected
+        case .forbidden: .refused
+        case .failed(let error): DisableProblem(error: error)
+        case .disabled, .cancelled, nil: .unreachable
+        }
     }
 
     /// Joins the alias's in-flight attempt, or starts one. A successful attempt drops the record.
@@ -419,6 +462,6 @@ private enum DisableOutcome: Sendable {
 }
 
 private enum GroupResult: Sendable {
-    case attemptFinished
+    case attemptFinished(aliasID: Int, outcome: DisableOutcome)
     case budgetExhausted
 }

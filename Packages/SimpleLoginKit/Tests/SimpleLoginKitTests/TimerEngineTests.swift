@@ -749,7 +749,7 @@ final class TestClock: @unchecked Sendable {
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         api.errors = [APIError.server(status: 404, message: nil)]
 
-        #expect(await engine.disableAll(within: .seconds(5)))
+        #expect(await engine.disableAll(within: .seconds(5)) == .allDisabled)
         #expect(engine.records.isEmpty)
     }
 
@@ -891,7 +891,7 @@ final class TestClock: @unchecked Sendable {
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         api.errors = [forbidden]
 
-        #expect(await engine.disableAll(within: .seconds(5)) == false)
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([1: .refused]))
         #expect(engine.records.count == 1)
         #expect(store.records.count == 1)
     }
@@ -982,7 +982,7 @@ final class TestClock: @unchecked Sendable {
         #expect(!quit.isFinished)
         gated.open()
 
-        #expect(try await quit.value)
+        #expect(try await quit.value == .allDisabled)
         #expect(await events == [.disabled(aliasID: 1, email: "one@example.com")])
         #expect(engine.records.isEmpty)
     }
@@ -994,9 +994,9 @@ final class TestClock: @unchecked Sendable {
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         _ = try await engine.enable(aliasID: 2, for: .oneHour)
 
-        let allDisabled = await engine.disableAll(within: .seconds(5))
+        let outcome = await engine.disableAll(within: .seconds(5))
 
-        #expect(allDisabled)
+        #expect(outcome == .allDisabled)
         #expect(api.aliases[1]?.enabled == false)
         #expect(api.aliases[2]?.enabled == false)
         #expect(engine.records.isEmpty)
@@ -1009,9 +1009,9 @@ final class TestClock: @unchecked Sendable {
         _ = try await engine.enable(aliasID: 2, for: .oneHour)
         api.errors = [APIError.transport("offline")]
 
-        let allDisabled = await engine.disableAll(within: .seconds(5))
+        let outcome = await engine.disableAll(within: .seconds(5))
 
-        #expect(!allDisabled)
+        #expect(outcome == .stillEnabled([1: .unreachable]))
         #expect(engine.records.count == 1)
         #expect(store.records.count == 1)
     }
@@ -1024,9 +1024,9 @@ final class TestClock: @unchecked Sendable {
         engine.api = UnresponsiveAliasAPI()
         let started = ContinuousClock.now
 
-        let allDisabled = await engine.disableAll(within: .milliseconds(100))
+        let outcome = await engine.disableAll(within: .milliseconds(100))
 
-        #expect(!allDisabled)
+        #expect(outcome == .stillEnabled([1: .unreachable]))
         #expect(ContinuousClock.now - started < .seconds(5))
         #expect(engine.records.count == 1)
     }
@@ -1034,7 +1034,7 @@ final class TestClock: @unchecked Sendable {
     @Test func disableAllWithoutRecordsSucceeds() async {
         let engine = makeEngine(signedIn: false)
 
-        #expect(await engine.disableAll(within: .seconds(5)))
+        #expect(await engine.disableAll(within: .seconds(5)) == .allDisabled)
     }
 
     @Test func disableAllWithoutAPIKeepsRecords() async throws {
@@ -1043,7 +1043,7 @@ final class TestClock: @unchecked Sendable {
         ])
         let engine = makeEngine(store: store, signedIn: false)
 
-        #expect(await engine.disableAll(within: .seconds(5)) == false)
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([1: .unreachable]))
         #expect(engine.records.count == 1)
     }
 
@@ -1058,16 +1058,111 @@ final class TestClock: @unchecked Sendable {
         await yieldRepeatedly()
         gated.open()
 
-        #expect(try await quit.value)
+        #expect(try await quit.value == .allDisabled)
         #expect(api.aliases[1]?.enabled == false)
         #expect(engine.records.isEmpty)
         #expect(await tick.value.isEmpty)
     }
 
-    @Test func disableAllReportsFailureWhenTimerFileIsUnreadable() async {
+    @Test func disableAllWithUnreadableTimerData() async {
         let engine = makeEngine(store: InMemoryTimerStore(failLoad: true))
 
-        #expect(await engine.disableAll(within: .seconds(5)) == false)
+        #expect(await engine.disableAll(within: .seconds(5)) == .timerDataUnreadable)
+    }
+
+    @Test func disableAllReportsWhyAliasesStayEnabled() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.transport("offline")]
+
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([1: .unreachable]))
+    }
+
+    @Test func disableAllReportsARefusedAlias() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [forbidden]
+
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([1: .refused]))
+    }
+
+    @Test func disableAllReportsARejectedKey() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.errors = [APIError.unauthorized]
+
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([1: .keyRejected]))
+    }
+
+    @Test func disableAllReportsEveryAliasItLeavesEnabled() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        api.errors = [APIError.server(status: 503, message: nil), APIError.server(status: 503, message: nil)]
+
+        #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([
+            1: .notResponding(status: 503),
+            2: .notResponding(status: 503),
+        ]))
+    }
+
+    @Test func disableAllCountsAnUnfinishedDisableAsUnreachable() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+
+        let quit = TrackedTask { await engine.disableAll(within: .milliseconds(50)) }
+        await gated.waitUntilHolding(1)
+        try await Task.sleep(for: .milliseconds(200))
+        gated.open()
+
+        #expect(try await quit.value == .stillEnabled([1: .unreachable]))
+    }
+
+    // MARK: - Forgetting timers
+
+    @Test func discardAllForgetsEveryTimer() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        clock.advance(by: 300)
+        api.errors = [APIError.transport("offline")]
+        _ = await engine.processDue()
+        #expect(!engine.failures.isEmpty)
+
+        try engine.discardAll()
+
+        #expect(engine.records.isEmpty)
+        #expect(engine.failures.isEmpty)
+        #expect(store.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == true)
+        #expect(api.aliases[2]?.enabled == true)
+    }
+
+    @Test func discardAllIsRefusedWhenTimerDataIsUnreadable() {
+        let engine = makeEngine(store: InMemoryTimerStore(failLoad: true))
+
+        #expect(throws: TimerEngineError.storeUnavailable) {
+            try engine.discardAll()
+        }
+    }
+
+    // MARK: - An account change while enabling
+
+    @Test func anEnableFinishingAfterSignOutStartsNoTimerAndDisablesTheAliasAgain() async throws {
+        let engine = makeEngine()
+        let gated = GatedAliasAPI(base: api)
+        engine.api = gated
+
+        let enabling = Task { try await engine.enable(aliasID: 1, for: .fiveMinutes) }
+        await gated.waitUntilHolding(1)
+        engine.api = nil
+        gated.open()
+
+        await #expect(throws: TimerEngineError.accountChanged) {
+            try await enabling.value
+        }
+        #expect(engine.records.isEmpty)
+        #expect(store.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == false)
     }
 
     // MARK: - Reporting each disabled alias
