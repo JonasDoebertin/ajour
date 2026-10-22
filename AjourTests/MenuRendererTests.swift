@@ -1,4 +1,6 @@
 import AppKit
+import Foundation
+import SimpleLoginKit
 import Testing
 @testable import Ajour
 
@@ -15,7 +17,7 @@ struct MenuRendererTests {
     @Test func rendersTitlesSeparatorsAndShortcuts() {
         let renderer = makeRenderer()
 
-        renderer.show([.notice("Offline"), .separator, .action("Quit", .quit, shortcut: "q")])
+        renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .separator, .action("Quit", .quit, shortcut: "q")])
 
         #expect(menu.items.map(\.title) == ["Offline", "", "Quit"])
         #expect(menu.items[0].isEnabled == false)
@@ -23,6 +25,24 @@ struct MenuRendererTests {
         #expect(menu.items[2].isEnabled)
         #expect(menu.items[2].keyEquivalent == "q")
         #expect(menu.autoenablesItems == false)
+    }
+
+    @Test func rendersHeadersAsSectionHeaders() {
+        let renderer = makeRenderer()
+
+        renderer.show([.header("Pinned")])
+
+        #expect(menu.items.first?.isSectionHeader == true)
+        #expect(menu.items.first?.title == "Pinned")
+    }
+
+    @Test func rendersAliasRowsAsSubmenusTitledWithTheAddress() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Copy Address", .copy(email: "shop@example.com"))])])
+
+        #expect(menu.items.first?.title == "shop@example.com")
+        #expect(menu.items.first?.submenu?.items.map(\.title) == ["Copy Address"])
     }
 
     @Test func rendersSubmenusWithTheirOwnEnabledState() throws {
@@ -38,7 +58,7 @@ struct MenuRendererTests {
 
     @Test func choosingAnItemPerformsItsAction() throws {
         let renderer = makeRenderer()
-        renderer.show([.submenu("○ shop@example.com", [.action("Copy Address", .copy(email: "shop@example.com"))])])
+        renderer.show([.submenu("Alias", [.action("Copy Address", .copy(email: "shop@example.com"))])])
         let submenu = try #require(menu.items.first?.submenu)
 
         submenu.performActionForItem(at: 0)
@@ -46,39 +66,57 @@ struct MenuRendererTests {
         #expect(performed.actions == [.copy(email: "shop@example.com")])
     }
 
-    @Test func aNewCountdownUpdatesTheTitleOfTheSameItems() throws {
+    @Test func aNewCountdownKeepsTheSameItems() throws {
         let renderer = makeRenderer()
         let children: [MenuEntry] = [.action("Disable Now", .disableNow(aliasID: 7))]
-        renderer.show([.submenu("● shop@example.com · 1:00 left", children), .separator])
+        renderer.show([aliasEntry(status: status(remaining: 60), children: children), .separator])
         let item = try #require(menu.items.first)
         let submenu = try #require(item.submenu)
 
-        renderer.show([.submenu("● shop@example.com · 0:59 left", children), .separator])
+        renderer.show([aliasEntry(status: status(remaining: 59), children: children), .separator])
 
         #expect(menu.items.first === item)
         #expect(item.submenu === submenu)
-        #expect(item.title == "● shop@example.com · 0:59 left")
     }
 
     @Test func aChangedLayoutReplacesTheItems() throws {
         let renderer = makeRenderer()
-        renderer.show([.submenu("● shop@example.com · 0:01 left", [.action("Disable Now", .disableNow(aliasID: 7))])])
+        renderer.show([aliasEntry(status: status(remaining: 1), children: [.action("Disable Now", .disableNow(aliasID: 7))])])
         let item = try #require(menu.items.first)
 
-        renderer.show([.submenu("○ shop@example.com", [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
+        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
 
         #expect(menu.items.first !== item)
         #expect(menu.items.first?.submenu?.items.map(\.title) == ["Enable for 5 Minutes"])
+    }
+
+    @Test func aNewTitleUpdatesTheSameItem() throws {
+        let renderer = makeRenderer()
+        renderer.show([.submenu("Extend (1)", [.action("1 Hour", .extend(aliasID: 7, duration: .oneHour))])])
+        let item = try #require(menu.items.first)
+
+        renderer.show([.submenu("Extend (2)", [.action("1 Hour", .extend(aliasID: 7, duration: .oneHour))])])
+
+        #expect(menu.items.first === item)
+        #expect(item.title == "Extend (2)")
     }
 
     @Test func anAddedEntryReplacesTheItems() {
         let renderer = makeRenderer()
         renderer.show([.action("Quit", .quit)])
 
-        renderer.show([.notice("Offline"), .action("Quit", .quit)])
+        renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .action("Quit", .quit)])
 
         #expect(menu.items.map(\.title) == ["Offline", "Quit"])
     }
+}
+
+private func status(remaining: TimeInterval) -> AliasStatus {
+    .make(state: .timed(remaining: remaining, endsAt: Date(timeIntervalSince1970: 3600), length: 300), activity: nil)
+}
+
+private func aliasEntry(status: AliasStatus, children: [MenuEntry]) -> MenuEntry {
+    .alias(MenuAliasRow(id: 7, email: "shop@example.com", status: status, accessibilityLabel: "shop@example.com"), children)
 }
 
 @MainActor final class PerformedActions {

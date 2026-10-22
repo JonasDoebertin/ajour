@@ -28,27 +28,36 @@ import AppKit
 
     private func makeItem(for entry: MenuEntry) -> NSMenuItem {
         switch entry {
-        case .notice(let title):
+        case .header(let title):
+            return .sectionHeader(title: title)
+        case .notice(let title, _, _):
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.isEnabled = false
             return item
-        case let .action(title, action, shortcut, isEnabled):
+        case let .action(title, action, _, shortcut, isEnabled):
             let item = NSMenuItem(title: title, action: #selector(performAction(of:)), keyEquivalent: shortcut)
             item.target = self
             item.representedObject = MenuActionBox(action)
             item.isEnabled = isEnabled
             return item
-        case let .submenu(title, entries, isEnabled):
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            let submenu = NSMenu(title: title)
-            submenu.autoenablesItems = false
-            submenu.items = entries.map(makeItem)
-            item.submenu = submenu
+        case let .submenu(title, entries, _, isEnabled):
+            let item = makeSubmenuItem(title: title, entries: entries)
             item.isEnabled = isEnabled
             return item
+        case let .alias(row, entries):
+            return makeSubmenuItem(title: row.email, entries: entries)
         case .separator:
             return .separator()
         }
+    }
+
+    private func makeSubmenuItem(title: String, entries: [MenuEntry]) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: title)
+        submenu.autoenablesItems = false
+        submenu.items = entries.map(makeItem)
+        item.submenu = submenu
+        return item
     }
 
     @objc private func performAction(of item: NSMenuItem) {

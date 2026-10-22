@@ -38,7 +38,10 @@ enum AliasActionError: Error, Equatable {
     private(set) var pinned: [Alias] = []
     private(set) var now: Date
     /// The reason the last alias action failed, until an action succeeds or the key changes.
-    private(set) var lastError: String?
+    private(set) var lastError: String? {
+        didSet { if lastError == nil { lastErrorIsNetwork = false } }
+    }
+    private(set) var lastErrorIsNetwork = false
     private var activities: [Int: AliasActivity] = [:]
     let engine: TimerEngine
     private(set) var api: SimpleLoginAPI?
@@ -198,7 +201,9 @@ enum AliasActionError: Error, Equatable {
             apiKeyInvalid: apiKeyInvalid,
             timerDataUnreadable: engine.loadError != nil,
             sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
-            busyAliasIDs: Set(activities.keys)
+            activities: activities,
+            lastErrorIsNetwork: lastErrorIsNetwork,
+            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
     }
 
@@ -249,7 +254,7 @@ enum AliasActionError: Error, Equatable {
             lastError = nil
         } catch {
             guard session == self.session || error is AliasCreationError else { return }
-            lastError = Self.userMessage(for: error)
+            fail(with: error)
         }
     }
 
@@ -440,12 +445,21 @@ enum AliasActionError: Error, Equatable {
         return now.timeIntervalSince(lastActivityPollAt) >= Self.activityPollInterval
     }
 
+    private func fail(with error: any Error) {
+        lastError = Self.userMessage(for: error)
+        if case APIError.transport = error {
+            lastErrorIsNetwork = true
+        } else {
+            lastErrorIsNetwork = false
+        }
+    }
+
     private func perform(_ action: () throws -> Void) {
         do {
             try action()
             lastError = nil
         } catch {
-            lastError = Self.userMessage(for: error)
+            fail(with: error)
         }
     }
 
@@ -460,7 +474,7 @@ enum AliasActionError: Error, Equatable {
             lastError = nil
             return true
         } catch {
-            lastError = Self.userMessage(for: error)
+            fail(with: error)
             return false
         }
     }

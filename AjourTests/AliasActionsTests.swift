@@ -68,6 +68,7 @@ struct AliasActionsTests {
         await model.enable(aliasID: 7, for: .fiveMinutes)
 
         #expect(model.lastError == "Could not reach SimpleLogin. Check your network connection.")
+        #expect(model.lastErrorIsNetwork)
         #expect(model.engine.record(for: 7) == nil)
         #expect(model.menuSections.pinned.first?.state == .disabled)
     }
@@ -89,6 +90,7 @@ struct AliasActionsTests {
         await model.enable(aliasID: 7, for: .fiveMinutes)
 
         #expect(model.lastError == "The alias did not change. Try again.")
+        #expect(!model.lastErrorIsNetwork)
     }
 
     @Test func aSuccessfulActionClearsThePreviousError() async throws {
