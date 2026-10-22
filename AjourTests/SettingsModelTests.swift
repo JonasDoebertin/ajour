@@ -172,6 +172,19 @@ struct SettingsModelTests {
         #expect(test.settings.signOutError == SignOutError.timerDataUnreadable.userMessage)
     }
 
+    @Test func signingOutAnywayThatCannotRemoveTheKeyExplainsWhyAndKeepsTheTimers() async throws {
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7)])
+        let test = SettingsModelTests(keyStore: InMemoryAPIKeyStore(failsToDelete: true), timerStore: timerStore)
+        try await test.signIn()
+
+        await test.settings.signOutAnyway()
+
+        #expect(test.appModel.phase == .signedIn(Fixtures.userInfo))
+        #expect(test.settings.signOutError == "The API key could not be removed from the Keychain.")
+        #expect(test.appModel.engine.records.map(\.aliasID) == [7])
+        #expect(timerStore.records.map(\.aliasID) == [7])
+    }
+
     @Test func unreadableTimerDataKeepsTheCouldNotSignOutAlert() async throws {
         let test = SettingsModelTests(timerStore: UnavailableTimerStore(reason: "test"))
         try await test.signIn()

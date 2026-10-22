@@ -219,14 +219,21 @@ enum AliasActionError: Error, Equatable {
     }
 
     /// Leaves aliases that stay enabled as they are: their timers are forgotten, because without the key
-    /// nothing could disable them. Stops before removing the key if the timers can't be forgotten.
+    /// nothing could disable them. Stops before removing the key if the timers can't be forgotten, and tracks
+    /// the timers again if the key can't be removed, so a person who stays signed in keeps every timer.
     func signOutAnyway() async throws {
+        let discarded: DiscardedTimers
         do {
-            try engine.discardAll()
+            discarded = try engine.discardAll()
         } catch {
             throw SignOutError.timerDataUnreadable
         }
-        try removeAccount()
+        do {
+            try removeAccount()
+        } catch {
+            try? engine.restore(discarded)
+            throw error
+        }
     }
 
     private func removeAccount() throws {

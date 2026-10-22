@@ -604,6 +604,24 @@ struct AppModelTests {
         #expect(model.engine.records.count == 1)
     }
 
+    @Test func signOutAnywayKeepsEveryTimerWhenTheKeyCannotBeRemoved() async throws {
+        let start = TestClock().now
+        let keyStore = InMemoryAPIKeyStore(failsToDelete: true)
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 6, at: start), .running(aliasID: 7, at: start)])
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, retry: .once)
+        _ = try await model.signIn(apiKey: "valid-key")
+
+        await #expect(throws: KeychainError.status(errSecInteractionNotAllowed)) {
+            try await model.signOutAnyway()
+        }
+
+        #expect(keyStore.key == "valid-key")
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+        #expect(model.engine.records.map(\.aliasID) == [6, 7])
+        #expect(timerStore.records.map(\.aliasID) == [6, 7])
+    }
+
     @Test func disableAfterFinishingAfterSignOutStartsNoTimer() async throws {
         let model = try await signedInModel()
         transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))

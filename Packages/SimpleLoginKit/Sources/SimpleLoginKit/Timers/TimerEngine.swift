@@ -268,19 +268,30 @@ public enum DisableAllOutcome: Equatable, Sendable {
     }
 
     /// Stops tracking every alias and leaves them as they are. A failed save changes nothing.
-    public func discardAll() throws {
+    /// Returns what was discarded, so it can be restored if a step that depends on the discard fails.
+    @discardableResult
+    public func discardAll() throws -> DiscardedTimers {
         try ensureStoreAvailable()
-        let discardedRecords = records
-        let discardedFailures = failures
+        let discarded = DiscardedTimers(records: records, failures: failures)
         records = []
         failures = [:]
         do {
             try save()
         } catch {
-            records = discardedRecords
-            failures = discardedFailures
+            records = discarded.records
+            failures = discarded.failures
             throw error
         }
+        return discarded
+    }
+
+    /// Tracks discarded timers again, next to any timer started since.
+    public func restore(_ discarded: DiscardedTimers) throws {
+        try ensureStoreAvailable()
+        let restoredAliasIDs = Set(discarded.records.map(\.aliasID))
+        records = discarded.records + records.filter { !restoredAliasIDs.contains($0.aliasID) }
+        failures.merge(discarded.failures) { current, _ in current }
+        try save()
     }
 
     private func stillEnabledOutcome(outcomes: [Int: DisableOutcome]) -> DisableAllOutcome {
@@ -480,6 +491,12 @@ public enum DisableAllOutcome: Equatable, Sendable {
         try ensureStoreAvailable()
         try store.save(records)
     }
+}
+
+/// Timers that `TimerEngine.discardAll()` stopped tracking.
+public struct DiscardedTimers: Sendable {
+    fileprivate let records: [TimerRecord]
+    fileprivate let failures: [Int: DisableFailure]
 }
 
 private enum DisableOutcome: Sendable {

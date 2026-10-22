@@ -1319,6 +1319,24 @@ final class TestClock: @unchecked Sendable {
         #expect(store.records.map(\.aliasID) == [1, 2])
     }
 
+    @Test func restoringDiscardedTimersTracksThemAgain() async throws {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .oneHour)
+        clock.advance(by: 300)
+        api.errors = [APIError.transport("offline")]
+        _ = await engine.processDue()
+        let failures = engine.failures
+        #expect(!failures.isEmpty)
+        let discarded = try engine.discardAll()
+
+        try engine.restore(discarded)
+
+        #expect(engine.records.map(\.aliasID) == [1, 2])
+        #expect(engine.failures == failures)
+        #expect(store.records.map(\.aliasID) == [1, 2])
+    }
+
     @Test func discardAllIsRefusedWhenTimerDataIsUnreadable() {
         let engine = makeEngine(store: InMemoryTimerStore(failLoad: true))
 
