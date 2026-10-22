@@ -1,0 +1,48 @@
+name: Build
+description: Builds the app for release and zips it with ditto, which keeps the bundle's permissions and links intact.
+
+inputs:
+  version:
+    description: Version shown to users; empty keeps the project's version
+    default: ""
+  build-number:
+    description: Build number of the bundle
+    required: true
+  archive-name:
+    description: File name of the zip, without extension
+    required: true
+
+outputs:
+  archive:
+    description: Path of the zipped app
+    value: ${{ steps.archive.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build the app
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        BUILD_NUMBER: ${{ inputs.build-number }}
+      run: |
+        settings=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
+        if [ -n "$VERSION" ]; then settings+=("MARKETING_VERSION=$VERSION"); fi
+        xcodebuild build \
+          -project Ajour.xcodeproj \
+          -scheme Ajour \
+          -configuration Release \
+          -destination "generic/platform=macOS" \
+          -derivedDataPath build/DerivedData \
+          "${settings[@]}" \
+          | xcbeautify --renderer github-actions
+
+    - name: Zip the app
+      id: archive
+      shell: bash
+      env:
+        ARCHIVE_NAME: ${{ inputs.archive-name }}
+      run: |
+        path="build/$ARCHIVE_NAME.zip"
+        ditto -c -k --keepParent build/DerivedData/Build/Products/Release/Ajour.app "$path"
+        echo "path=$path" >> "$GITHUB_OUTPUT"
