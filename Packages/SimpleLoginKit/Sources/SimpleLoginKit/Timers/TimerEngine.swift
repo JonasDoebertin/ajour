@@ -250,12 +250,20 @@ public enum DisableAllOutcome: Equatable, Sendable {
         return stillEnabledOutcome(outcomes: outcomes)
     }
 
-    /// Stops tracking every alias and leaves them as they are.
+    /// Stops tracking every alias and leaves them as they are. A failed save changes nothing.
     public func discardAll() throws {
         try ensureStoreAvailable()
+        let discardedRecords = records
+        let discardedFailures = failures
         records = []
         failures = [:]
-        try save()
+        do {
+            try save()
+        } catch {
+            records = discardedRecords
+            failures = discardedFailures
+            throw error
+        }
     }
 
     private func stillEnabledOutcome(outcomes: [Int: DisableOutcome]) -> DisableAllOutcome {

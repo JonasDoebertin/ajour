@@ -581,6 +581,7 @@ struct AppModelTests {
 
         #expect(keyStore.key == "valid-key")
         #expect(model.phase == .signedIn(Fixtures.userInfo))
+        #expect(model.engine.records.count == 1)
     }
 
     @Test func disableAfterFinishingAfterSignOutStartsNoTimer() async throws {

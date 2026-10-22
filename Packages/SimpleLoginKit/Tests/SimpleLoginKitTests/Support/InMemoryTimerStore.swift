@@ -4,6 +4,7 @@ import Foundation
 final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     var records: [TimerRecord]
     var failLoad: Bool
+    var failSave = false
 
     init(records: [TimerRecord] = [], failLoad: Bool = false) {
         self.records = records
@@ -16,6 +17,7 @@ final class InMemoryTimerStore: TimerStore, @unchecked Sendable {
     }
 
     func save(_ records: [TimerRecord]) throws {
+        if failSave { throw TimerStoreError.unreadable("test") }
         self.records = records
     }
 }
