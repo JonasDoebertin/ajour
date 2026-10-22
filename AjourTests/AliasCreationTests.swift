@@ -106,7 +106,7 @@ final class AliasCreationTests {
         await model.createRandomAlias(expiringAfter: .fiveMinutes)
 
         #expect(test.requestCount(path: "/api/aliases/42/toggle") == 1)
-        #expect(model.lastError == "Timer data is unreadable, so timers can't be started or changed.")
+        #expect(model.lastError == "random@example.com was created, but its timer could not start, so it was disabled again.")
         #expect(test.copied.isEmpty)
         #expect(test.announced.isEmpty)
     }

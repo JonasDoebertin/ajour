@@ -251,6 +251,24 @@ final class NewAliasModelTests {
         #expect(model.isComplete == false)
     }
 
+    @Test func anAliasDisabledAgainBecauseItsTimerCouldNotStartKeepsCreateAndTheUnprefixedMessage() async throws {
+        enqueueChoices()
+        let appModel = try await signedInAppModel(timerStore: UnavailableTimerStore(reason: "test"))
+        let model = NewAliasModel(appModel: appModel)
+        await model.load()
+        model.prefix = "shop"
+        model.expiry = .fiveMinutes
+        enqueueCreated()
+        transport.enqueue("/api/aliases/50", json: Fixtures.newAliasJSON(id: 50, email: "shop@my.dev"))
+        transport.enqueue("/api/aliases/50/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await model.create()
+
+        #expect(model.errorMessage == "shop@my.dev was created, but its timer could not start, so it was disabled again.")
+        #expect(model.submitTitle == "Create")
+        #expect(model.isComplete == false)
+    }
+
     @Test func tryAgainResubmitsAndClearsTheErrorOnSuccess() async throws {
         enqueueChoices()
         let (model, _) = try await loadedModel()

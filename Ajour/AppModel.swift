@@ -18,6 +18,7 @@ enum SignOutError: Error, Equatable {
 }
 
 enum AliasCreationError: Error, Equatable {
+    case disabledWithoutTimer(email: String)
     case stillEnabledWithoutTimer(email: String)
     case accountChanged(email: String)
     case disabledAfterAccountChange(email: String)
@@ -526,7 +527,7 @@ enum AliasActionError: Error, Equatable {
             } catch {
                 throw AliasCreationError.stillEnabledWithoutTimer(email: alias.email)
             }
-            throw error
+            throw AliasCreationError.disabledWithoutTimer(email: alias.email)
         }
     }
 
@@ -563,6 +564,8 @@ enum AliasActionError: Error, Equatable {
         switch error {
         case let error as APIError:
             error.userMessage
+        case AliasCreationError.disabledWithoutTimer(let email):
+            "\(email) was created, but its timer could not start, so it was disabled again."
         case AliasCreationError.stillEnabledWithoutTimer(let email):
             "\(email) was created, but its timer could not start and it is still enabled."
         case AliasCreationError.accountChanged(let email):
