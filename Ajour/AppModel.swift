@@ -337,7 +337,9 @@ enum AliasActionError: Error, Equatable {
                 guard let api else { throw TimerEngineError.notSignedIn }
                 let session = self.session
                 let alias = try await api.alias(id: aliasID)
-                guard session == self.session else { throw AliasActionError.timerNotStartedForPreviousAccount(email: alias.email) }
+                guard session == self.session else {
+                    throw AliasActionError.timerNotStartedForPreviousAccount(email: alias.email)
+                }
                 guard alias.enabled else {
                     recordEnabled(false, aliasID: aliasID)
                     throw AliasActionError.alreadyDisabled(email: alias.email)
