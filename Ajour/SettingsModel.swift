@@ -5,6 +5,8 @@ import SimpleLoginKit
     private(set) var launchAtLogin = false
     private(set) var launchAtLoginError: String?
     var signOutError: String?
+    /// Set while sign-out is blocked by aliases that stay enabled, until the person signs out anyway or cancels.
+    var blockedSignOut: SignOutError?
     private(set) var isSigningOut = false
 
     @ObservationIgnored private let appModel: AppModel
@@ -41,12 +43,24 @@ import SimpleLoginKit
     }
 
     func signOut() async {
+        await performSignOut { try await appModel.signOut() }
+    }
+
+    func signOutAnyway() async {
+        blockedSignOut = nil
+        await performSignOut { try await appModel.signOutAnyway() }
+    }
+
+    private func performSignOut(_ signOut: () async throws -> Void) async {
         isSigningOut = true
         defer { isSigningOut = false }
         do {
-            try await appModel.signOut()
+            try await signOut()
         } catch let error as SignOutError {
-            signOutError = error.userMessage
+            switch error {
+            case .aliasesStillEnabled: blockedSignOut = error
+            case .timerDataUnreadable: signOutError = error.userMessage
+            }
         } catch {
             signOutError = "The API key could not be removed from the Keychain."
         }

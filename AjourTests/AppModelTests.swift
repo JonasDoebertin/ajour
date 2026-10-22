@@ -16,14 +16,22 @@ struct AppModelTests {
         timerStore = InMemoryTimerStore(records: records)
     }
 
-    func makeModel() -> AppModel {
+    func makeModel(signOutBudget: Duration = .seconds(30), disableBudget: Duration = .seconds(5)) -> AppModel {
         let clock = clock
-        return AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, now: { clock.now }, retry: .once)
+        return AppModel(
+            keyStore: keyStore,
+            timerStore: timerStore,
+            transport: transport,
+            now: { clock.now },
+            disableBudget: disableBudget,
+            signOutBudget: signOutBudget,
+            retry: .once
+        )
     }
 
-    func signedInModel() async throws -> AppModel {
+    func signedInModel(signOutBudget: Duration = .seconds(30), disableBudget: Duration = .seconds(5)) async throws -> AppModel {
         transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
-        let model = makeModel()
+        let model = makeModel(signOutBudget: signOutBudget, disableBudget: disableBudget)
         _ = try await model.signIn(apiKey: "valid-key")
         return model
     }
@@ -258,7 +266,7 @@ struct AppModelTests {
         test.transport.enqueue("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
         test.transport.enqueue("/api/aliases/6/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
 
-        await #expect(throws: SignOutError.aliasesStillEnabled(count: 1)) {
+        await #expect(throws: SignOutError.aliasesStillEnabled([.shop(.unreachable)], pendingEnables: 0)) {
             try await model.signOut()
         }
 
@@ -486,11 +494,11 @@ struct AppModelTests {
         #expect(model.phase == .signedOut)
     }
 
-    @Test func signOutKeepsTheKeyWhenTimedAliasesStayEnabled() async throws {
+    @Test func signOutNamesEachAliasThatStaysEnabledAndWhy() async throws {
         let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
 
-        await #expect(throws: SignOutError.aliasesStillEnabled(count: 1)) {
+        await #expect(throws: SignOutError.aliasesStillEnabled([.shop(.unreachable)], pendingEnables: 0)) {
             try await model.signOut()
         }
 
@@ -499,9 +507,146 @@ struct AppModelTests {
         #expect(model.engine.api != nil)
     }
 
-    @Test func signOutErrorsExplainWhySignOutIsBlocked() {
-        #expect(SignOutError.aliasesStillEnabled(count: 2).userMessage == "2 aliases are still enabled. Check your connection and try again.")
-        #expect(SignOutError.aliasesStillEnabled(count: 1).userMessage == "1 alias is still enabled. Check your connection and try again.")
+    @Test func aRefusedAliasBlocksSignOutWithItsReason() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", status: 403, json: #"{"error":"Forbidden"}"#)
+
+        await #expect(throws: SignOutError.aliasesStillEnabled([.shop(.refused)], pendingEnables: 0)) {
+            try await model.signOut()
+        }
+    }
+
+    @Test func signOutWaitsForASlowEnableBeyondFiveSeconds() async throws {
+        let test = AppModelTests()
+        let model = try await test.signedInModel(signOutBudget: .seconds(10), disableBudget: .milliseconds(100))
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let enabling = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await test.transport.waitUntilARequestIsHeld()
+        let signOut = Task { try await model.signOut() }
+
+        try await Task.sleep(for: .milliseconds(300))
+        test.transport.release()
+
+        try await signOut.value
+        _ = await enabling.value
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 2)
+        #expect(test.timerStore.records.isEmpty)
+        #expect(model.phase == .signedOut)
+    }
+
+    @Test func signOutCountsEnablesThatDidNotFinish() async throws {
+        let test = AppModelTests()
+        let model = try await test.signedInModel(signOutBudget: .milliseconds(200))
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        let enabling = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await test.transport.waitUntilARequestIsHeld()
+
+        await #expect(throws: SignOutError.aliasesStillEnabled([], pendingEnables: 1)) {
+            try await model.signOut()
+        }
+
+        #expect(test.keyStore.key == "valid-key")
+        test.transport.release()
+        _ = await enabling.value
+    }
+
+    @Test func signOutAnywayDiscardsEveryTimerAndRemovesTheKey() async throws {
+        let start = TestClock().now
+        let test = AppModelTests(records: [.running(aliasID: 6, at: start), .running(aliasID: 7, at: start)])
+        let model = try await test.signedInModel()
+
+        try await model.signOutAnyway()
+
+        #expect(model.engine.records.isEmpty)
+        #expect(test.timerStore.records.isEmpty)
+        #expect(test.keyStore.key == nil)
+        #expect(model.phase == .signedOut)
+        #expect(test.requestCount(path: "/api/aliases/6/toggle") + test.requestCount(path: "/api/aliases/7/toggle") == 0)
+    }
+
+    @Test func signOutAnywayKeepsTheKeyWhenTheTimersCannotBeDiscarded() async throws {
+        let timerStore = InMemoryTimerStore(records: [.running(aliasID: 7, at: TestClock().now)], failsToSave: true)
+        transport.enqueue("/api/user_info", json: Fixtures.userInfoJSON)
+        let model = AppModel(keyStore: keyStore, timerStore: timerStore, transport: transport, retry: .once)
+        _ = try await model.signIn(apiKey: "valid-key")
+
+        await #expect(throws: SignOutError.timerDataUnreadable) {
+            try await model.signOutAnyway()
+        }
+
+        #expect(keyStore.key == "valid-key")
+        #expect(model.phase == .signedIn(Fixtures.userInfo))
+    }
+
+    @Test func disableAfterFinishingAfterSignOutStartsNoTimer() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        let timing = Task { await model.disableAfter(aliasID: 7, duration: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+        try await model.signOutAnyway()
+
+        transport.release()
+        let succeeded = await timing.value
+
+        #expect(!succeeded)
+        #expect(model.engine.records.isEmpty)
+        #expect(timerStore.records.isEmpty)
+        #expect(model.lastError == nil)
+    }
+
+    @Test func anEnableFinishingAfterSignOutShowsNoError() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let enabling = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
+        await transport.waitUntilARequestIsHeld()
+        try await model.signOutAnyway()
+
+        transport.release()
+        let succeeded = await enabling.value
+
+        #expect(!succeeded)
+        #expect(requestCount(path: "/api/aliases/7/toggle") == 2)
+        #expect(model.engine.records.isEmpty)
+        #expect(model.lastError == nil)
+    }
+
+    @Test func signOutErrorsExplainWhichAliasesStayEnabled() {
+        let one = SignOutError.aliasesStillEnabled([StillEnabledAlias(email: "a@example.com", problem: .unreachable)], pendingEnables: 0)
+        #expect(one.title == "An Alias Is Still Enabled")
+        #expect(one.userMessage == "a@example.com: SimpleLogin can't be reached\n\nIf you sign out anyway, it stays enabled.")
+
+        let several = SignOutError.aliasesStillEnabled(
+            [
+                StillEnabledAlias(email: "a@example.com", problem: .refused),
+                StillEnabledAlias(email: "b@example.com", problem: .keyRejected),
+            ],
+            pendingEnables: 1
+        )
+        #expect(several.title == "3 Aliases Are Still Enabled")
+        #expect(several.userMessage == """
+            a@example.com: the API key can't change it
+            b@example.com: the API key was rejected
+            1 alias being enabled or created right now
+
+            If you sign out anyway, these aliases stay enabled.
+            """)
+
+        let onlyPending = SignOutError.aliasesStillEnabled([], pendingEnables: 1)
+        #expect(onlyPending.title == "An Alias Is Still Enabled")
+        #expect(onlyPending.userMessage == "1 alias being enabled or created right now\n\nIf you sign out anyway, it stays enabled.")
+
+        let manyPending = SignOutError.aliasesStillEnabled([StillEnabledAlias(email: "a@example.com", problem: .notResponding(status: 503))], pendingEnables: 2)
+        #expect(manyPending.userMessage.contains("a@example.com: SimpleLogin isn't responding\n2 aliases being enabled or created right now"))
+        #expect(StillEnabledAlias(email: "a@example.com", problem: .other).reason == "SimpleLogin reported an error")
+
         #expect(SignOutError.timerDataUnreadable.userMessage == "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases.")
     }
 
@@ -658,5 +803,11 @@ private extension TimerRecord {
 
     static func running(aliasID: Int, at now: Date) -> TimerRecord {
         TimerRecord(aliasID: aliasID, email: "shop@example.com", enabledAt: now.addingTimeInterval(-10), expiresAt: now.addingTimeInterval(290))
+    }
+}
+
+private extension StillEnabledAlias {
+    static func shop(_ problem: DisableProblem) -> StillEnabledAlias {
+        StillEnabledAlias(email: "shop@example.com", problem: problem)
     }
 }

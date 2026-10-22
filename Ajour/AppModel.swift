@@ -2,15 +2,46 @@ import AppKit
 import Observation
 import SimpleLoginKit
 
+struct StillEnabledAlias: Equatable {
+    let email: String
+    let problem: DisableProblem
+
+    var reason: String {
+        switch problem {
+        case .unreachable: "SimpleLogin can't be reached"
+        case .notResponding: "SimpleLogin isn't responding"
+        case .refused: "the API key can't change it"
+        case .keyRejected: "the API key was rejected"
+        case .other: "SimpleLogin reported an error"
+        }
+    }
+}
+
 enum SignOutError: Error, Equatable {
-    case aliasesStillEnabled(count: Int)
+    /// Aliases sorted by email, plus the number of enables and creations still running when sign-out gave up waiting.
+    case aliasesStillEnabled([StillEnabledAlias], pendingEnables: Int)
     case timerDataUnreadable
+
+    var title: String {
+        switch self {
+        case .aliasesStillEnabled(let aliases, let pendingEnables):
+            let total = aliases.count + pendingEnables
+            return total == 1 ? "An Alias Is Still Enabled" : "\(total) Aliases Are Still Enabled"
+        case .timerDataUnreadable:
+            return "Could Not Sign Out"
+        }
+    }
 
     var userMessage: String {
         switch self {
-        case .aliasesStillEnabled(let count):
-            let aliases = count == 1 ? "1 alias is" : "\(count) aliases are"
-            return "\(aliases) still enabled. Check your connection and try again."
+        case .aliasesStillEnabled(let aliases, let pendingEnables):
+            var lines = aliases.map { "\($0.email): \($0.reason)" }
+            if pendingEnables > 0 {
+                let pending = pendingEnables == 1 ? "1 alias" : "\(pendingEnables) aliases"
+                lines.append("\(pending) being enabled or created right now")
+            }
+            let consequence = aliases.count + pendingEnables == 1 ? "it stays" : "these aliases stay"
+            return lines.joined(separator: "\n") + "\n\nIf you sign out anyway, \(consequence) enabled."
         case .timerDataUnreadable:
             return "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases."
         }
@@ -61,8 +92,11 @@ enum AliasActionError: Error, Equatable {
     @ObservationIgnored private let retry: RetryPolicy
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let copyToClipboard: @MainActor (String) -> Void
-    /// How long quit and sign-out try to disable aliases before giving up.
+    /// How long quit tries to disable aliases before giving up.
     @ObservationIgnored private let disableBudget: Duration
+    /// How long sign-out waits for enables and tries to disable aliases before giving up. Longer than quit's,
+    /// because the person is watching it and giving up keeps them signed in.
+    @ObservationIgnored private let signOutBudget: Duration
     @ObservationIgnored private var lastActivityPollAt: Date?
     /// Changes whenever the API key changes or is removed, so work bound to one key can restart.
     private(set) var session = 0
@@ -96,6 +130,7 @@ enum AliasActionError: Error, Equatable {
         now: @escaping @Sendable () -> Date = Date.init,
         copyToClipboard: @escaping @MainActor (String) -> Void = Clipboard.copy,
         disableBudget: Duration = .seconds(5),
+        signOutBudget: Duration = .seconds(30),
         retry: RetryPolicy = .standard
     ) {
         self.keyStore = keyStore
@@ -104,6 +139,7 @@ enum AliasActionError: Error, Equatable {
         currentDate = now
         self.copyToClipboard = copyToClipboard
         self.disableBudget = disableBudget
+        self.signOutBudget = signOutBudget
         self.now = now()
         engine = TimerEngine(store: timerStore, now: now, retry: retry)
         engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
@@ -164,15 +200,46 @@ enum AliasActionError: Error, Equatable {
     }
 
     /// Timed aliases are disabled first: without the key, nothing could disable them later.
+    /// Throws what stays enabled, so the person can sign out anyway.
     func signOut() async throws {
         guard engine.loadError == nil else { throw SignOutError.timerDataUnreadable }
-        guard await disableEverything() else {
-            throw SignOutError.aliasesStillEnabled(count: engine.records.count)
+        switch await disableEverything(within: signOutBudget) {
+        case .timerDataUnreadable:
+            throw SignOutError.timerDataUnreadable
+        case .allDisabled where enablesInFlight == 0:
+            break
+        case .allDisabled:
+            throw SignOutError.aliasesStillEnabled([], pendingEnables: enablesInFlight)
+        case .stillEnabled(let problems):
+            throw SignOutError.aliasesStillEnabled(stillEnabledAliases(problems), pendingEnables: enablesInFlight)
         }
+        try removeAccount()
+    }
+
+    /// Leaves aliases that stay enabled as they are: their timers are forgotten, because without the key
+    /// nothing could disable them. Stops before removing the key if the timers can't be forgotten.
+    func signOutAnyway() async throws {
+        do {
+            try engine.discardAll()
+        } catch {
+            throw SignOutError.timerDataUnreadable
+        }
+        try removeAccount()
+    }
+
+    private func removeAccount() throws {
         try keyStore.delete()
         connect(nil)
         pinned = []
         phase = .signedOut
+    }
+
+    private func stillEnabledAliases(_ problems: [Int: DisableProblem]) -> [StillEnabledAlias] {
+        problems
+            .compactMap { aliasID, problem in
+                engine.record(for: aliasID).map { StillEnabledAlias(email: $0.email, problem: problem) }
+            }
+            .sorted { $0.email.localizedStandardCompare($1.email) == .orderedAscending }
     }
 
     /// Replaces the list only once every page has loaded, so a failure keeps the last complete list.
@@ -246,7 +313,9 @@ enum AliasActionError: Error, Equatable {
         await whileEnabling {
             await perform(on: aliasID, activity: .updating) {
                 guard let api else { throw TimerEngineError.notSignedIn }
+                let session = self.session
                 let alias = try await api.alias(id: aliasID)
+                guard session == self.session else { throw TimerEngineError.accountChanged }
                 guard alias.enabled else {
                     recordEnabled(false, aliasID: aliasID)
                     throw AliasActionError.alreadyDisabled(email: alias.email)
@@ -356,15 +425,15 @@ enum AliasActionError: Error, Equatable {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
         }
-        _ = await disableEverything()
+        _ = await disableEverything(within: disableBudget)
     }
 
     /// Lets enables in flight save their timers first, so the aliases they enable are disabled too.
     /// Waiting and disabling share one budget.
-    private func disableEverything() async -> Bool {
-        let deadline = ContinuousClock.now + disableBudget
+    private func disableEverything(within budget: Duration) async -> DisableAllOutcome {
+        let deadline = ContinuousClock.now + budget
         await waitForEnablesInFlight(until: deadline)
-        return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now)) == .allDisabled
+        return await engine.disableAll(within: max(.zero, deadline - ContinuousClock.now))
     }
 
     /// Runs an action that can enable an alias before its timer is saved, so quit and sign-out wait for it.
@@ -499,6 +568,8 @@ enum AliasActionError: Error, Equatable {
             try await action()
             lastError = nil
             return true
+        } catch TimerEngineError.accountChanged {
+            return false
         } catch {
             fail(with: error)
             return false
