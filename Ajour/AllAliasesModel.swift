@@ -1,6 +1,18 @@
+import AppKit
 import Foundation
 import Observation
 import SimpleLoginKit
+
+struct AliasSection: Identifiable, Equatable {
+    let title: String
+    let aliases: [Alias]
+    var id: String { title }
+}
+
+enum EmptyState: Equatable {
+    case noAliases
+    case noMatches(query: String)
+}
 
 /// Lists every alias of the account page by page, optionally filtered by a search, and acts on single rows.
 @MainActor @Observable final class AllAliasesModel {
@@ -8,6 +20,8 @@ import SimpleLoginKit
     private(set) var aliases: [Alias] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    /// The number of aliases in the account, or nil until `GET /api/stats` has answered.
+    private(set) var totalAliases: Int?
     /// False until the current list's first page has answered, so it isn't called empty before.
     private var hasLoadedFirstPage = false
     private var query = ""
@@ -33,7 +47,14 @@ import SimpleLoginKit
     /// Starts the list over for the current search text.
     func reload() async {
         pendingSearch?.cancel()
+        async let total: Void = loadTotal()
         await startOver(query: searchText)
+        await total
+    }
+
+    private func loadTotal() async {
+        guard let stats = try? await appModel.api?.stats() else { return }
+        totalAliases = stats.nbAlias
     }
 
     /// Searches once typing pauses, so not every keystroke sends a request.
@@ -102,16 +123,53 @@ import SimpleLoginKit
         return enabled ? .enabled : .disabled
     }
 
-    func stateLabel(for alias: Alias) -> String {
-        switch state(of: alias) {
-        case .disabled: "Disabled"
-        case .enabled: "Enabled"
-        case .timed(let remaining, _, _): "\(RemainingTime.format(remaining)) left"
+    func status(of alias: Alias) -> AliasStatus {
+        AliasStatus.make(
+            state: state(of: alias),
+            activity: appModel.activity(aliasID: alias.id),
+            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+    }
+
+    func accessibilityLabel(for alias: Alias) -> String {
+        AliasStatus.accessibilityLabel(
+            email: alias.email,
+            pinned: alias.pinned,
+            state: state(of: alias),
+            activity: appModel.activity(aliasID: alias.id)
+        )
+    }
+
+    var sections: [AliasSection] {
+        [
+            AliasSection(title: "Pinned", aliases: aliases.filter(\.pinned)),
+            AliasSection(title: "Other Aliases", aliases: aliases.filter { !$0.pinned }),
+        ].filter { !$0.aliases.isEmpty }
+    }
+
+    var subtitle: String {
+        let total = totalAliases ?? aliases.count
+        if !query.isEmpty, hasLoadedFirstPage {
+            return "\(aliases.count) of \(Self.count(total))"
+        }
+        if isLoading, hasLoadedFirstPage {
+            return "\(Self.count(aliases.count)) loaded · loading more"
+        }
+        let timers = appModel.engine.records.count
+        switch timers {
+        case 0: return Self.count(total)
+        case 1: return "\(Self.count(total)) · 1 timer running"
+        default: return "\(Self.count(total)) · \(timers) timers running"
         }
     }
 
-    var showsEmptyState: Bool {
-        hasLoadedFirstPage && aliases.isEmpty && errorMessage == nil
+    private static func count(_ aliases: Int) -> String {
+        aliases == 1 ? "1 alias" : "\(aliases) aliases"
+    }
+
+    var emptyState: EmptyState? {
+        guard hasLoadedFirstPage, aliases.isEmpty, errorMessage == nil else { return nil }
+        return query.isEmpty ? .noAliases : .noMatches(query: query)
     }
 
     func isBusy(_ alias: Alias) -> Bool {

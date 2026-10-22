@@ -9,14 +9,14 @@ struct AllAliasesView: View {
         NavigationStack {
             List {
                 ForEach(model.aliases) { alias in
-                    AliasRow(alias: alias, stateLabel: model.stateLabel(for: alias))
+                    AliasRow(alias: alias, stateLabel: model.status(of: alias).words)
                         .contextMenu { AliasRowActions(alias: alias, model: model) }
                         .onAppear { Task { await model.loadMore(after: alias) } }
                 }
                 listFooter
             }
             .overlay {
-                if model.showsEmptyState {
+                if model.emptyState != nil {
                     ContentUnavailableView(
                         model.searchText.isEmpty ? "No Aliases" : "No Matching Aliases",
                         systemImage: "envelope"

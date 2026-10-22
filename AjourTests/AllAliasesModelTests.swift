@@ -35,9 +35,12 @@ final class AllAliasesModelTests {
     }
 
     /// A window that has loaded the given aliases as its first page.
-    func loadedModel(_ aliases: [String]) async throws -> (AllAliasesModel, AppModel) {
+    func loadedModel(_ aliases: [String], total: Int? = nil) async throws -> (AllAliasesModel, AppModel) {
         let appModel = try await signedInAppModel()
         let model = makeModel(appModel: appModel)
+        if let total {
+            transport.enqueue("/api/stats", json: #"{"nb_alias":\#(total)}"#)
+        }
         transport.enqueue("/api/v2/aliases", json: Self.pageJSON(aliases))
         await model.reload()
         return (model, appModel)
@@ -159,13 +162,13 @@ final class AllAliasesModelTests {
     @Test func aNewWindowDoesNotClaimThereAreNoAliasesBeforeLoading() async throws {
         let model = makeModel(appModel: try await signedInAppModel())
 
-        #expect(model.showsEmptyState == false)
+        #expect(model.emptyState == nil)
     }
 
     @Test func anEmptyAccountSaysThereAreNoAliases() async throws {
         let (model, _) = try await loadedModel([])
 
-        #expect(model.showsEmptyState)
+        #expect(model.emptyState == .noAliases)
     }
 
     @Test func aSearchThatIsStillLoadingDoesNotClaimThereAreNoMatches() async throws {
@@ -175,7 +178,7 @@ final class AllAliasesModelTests {
         let search = model.scheduleSearch()
         await transport.waitUntilARequestIsHeld()
 
-        #expect(model.showsEmptyState == false)
+        #expect(model.emptyState == nil)
         transport.release()
         await search.value
     }
@@ -257,12 +260,96 @@ final class AllAliasesModelTests {
         #expect(model.isLoading == false)
     }
 
+    // MARK: Sections, subtitle, and empty state
+
+    @Test func sectionsPutPinnedAliasesFirst() async throws {
+        let (model, _) = try await loadedModel([
+            Fixtures.aliasJSON(id: 1, pinned: true),
+            Fixtures.aliasJSON(id: 2, pinned: false),
+            Fixtures.aliasJSON(id: 3, pinned: true),
+        ])
+
+        #expect(model.sections.map(\.title) == ["Pinned", "Other Aliases"])
+        #expect(model.sections.map { $0.aliases.map(\.id) } == [[1, 3], [2]])
+    }
+
+    @Test func sectionsLeaveOutEmptyGroups() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1, pinned: false)])
+
+        #expect(model.sections.map(\.title) == ["Other Aliases"])
+    }
+
+    @Test(arguments: [(1, "12 aliases · 1 timer running"), (2, "12 aliases · 2 timers running")])
+    func subtitleCountsAliasesAndTimers(timers: Int, subtitle: String) async throws {
+        let records = (1...timers).map {
+            TimerRecord(aliasID: $0, email: "a\($0)@example.com", enabledAt: clock.now, expiresAt: clock.now.addingTimeInterval(60))
+        }
+        let test = AllAliasesModelTests(records: records)
+        let (model, _) = try await test.loadedModel([Fixtures.aliasJSON(id: 1)], total: 12)
+
+        #expect(model.subtitle == subtitle)
+    }
+
+    @Test func subtitleUsesTheSingularForOneAlias() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)], total: 1)
+
+        #expect(model.subtitle == "1 alias")
+    }
+
+    @Test func subtitleFallsBackToLoadedCountWithoutStats() async throws {
+        let (model, _) = try await loadedModel((1...3).map { Fixtures.aliasJSON(id: $0) })
+
+        #expect(model.subtitle == "3 aliases")
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func subtitleShowsMatchesWhileSearching() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)], total: 12)
+        transport.enqueue("/api/v2/aliases", method: "POST", json: Self.pageJSON([]))
+        model.searchText = "concert"
+
+        await model.scheduleSearch().value
+
+        #expect(model.subtitle == "0 of 12 aliases")
+        #expect(model.emptyState == .noMatches(query: "concert"))
+    }
+
+    @Test func subtitleShowsLoadingMore() async throws {
+        let (model, _) = try await loadedModel((1...20).map { Fixtures.aliasJSON(id: $0) }, total: 45)
+        transport.holdNext("/api/v2/aliases", json: Fixtures.aliasPageJSON(ids: 21...22))
+        let lastRow = try #require(model.aliases.last)
+        let loading = Task { await model.loadMore(after: lastRow) }
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.subtitle == "20 aliases loaded · loading more")
+        transport.release()
+        await loading.value
+    }
+
+    @Test func searchSubtitleWaitsForResults() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)], total: 12)
+        transport.holdNext("/api/v2/aliases", method: "POST", json: Self.pageJSON([]))
+        model.searchText = "concert"
+        let search = model.scheduleSearch()
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.subtitle == "12 aliases")
+        transport.release()
+        await search.value
+    }
+
+    @Test func aRowReadsItsPinnedStateAndStatusToVoiceOver() async throws {
+        let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1, email: "travel@example.com", enabled: true, pinned: true)])
+
+        #expect(model.accessibilityLabel(for: try #require(model.aliases.first)) == "travel@example.com, pinned, enabled")
+    }
+
     // MARK: Row state
 
     @Test func rowsShowWhetherAnAliasIsEnabled() async throws {
         let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1, enabled: false), Fixtures.aliasJSON(id: 2, enabled: true)])
 
-        #expect(model.aliases.map(model.stateLabel) == ["Disabled", "Enabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Disabled", "Enabled"])
     }
 
     @Test func aTimedRowShowsItsRemainingTime() async throws {
@@ -271,7 +358,7 @@ final class AllAliasesModelTests {
         ])
         let (model, _) = try await test.loadedModel([Fixtures.aliasJSON(id: 2, enabled: true)])
 
-        #expect(model.aliases.map(model.stateLabel) == ["3:12 left"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["3:12 left"])
     }
 
     @Test func aRowWhoseTimerExpiredShowsAsDisabledInTheWindowAndTheMenu() async throws {
@@ -289,7 +376,7 @@ final class AllAliasesModelTests {
         for work in appModel.scheduleTick() { await work.value }
 
         #expect(appModel.engine.records.isEmpty)
-        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Disabled"])
         #expect(appModel.pinned.first?.enabled == false)
     }
 
@@ -303,7 +390,7 @@ final class AllAliasesModelTests {
 
         await appModel.disableNow(aliasID: 7)
 
-        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Disabled"])
     }
 
     @Test func reloadingShowsTheServersStateOverAnEarlierChangeByTheApp() async throws {
@@ -315,7 +402,7 @@ final class AllAliasesModelTests {
 
         await model.reload()
 
-        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Enabled"])
     }
 
     // MARK: Row actions
@@ -357,7 +444,7 @@ final class AllAliasesModelTests {
 
         await model.enable(try #require(model.aliases.first), for: .fiveMinutes)
 
-        #expect(model.aliases.map(model.stateLabel) == ["5:00 left"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["5:00 left"])
         #expect(appModel.menuSections.timedUnpinned.map(\.id) == [7])
     }
 
@@ -368,7 +455,7 @@ final class AllAliasesModelTests {
         await model.disableAfter(try #require(model.aliases.first), duration: .fiveMinutes)
 
         #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
-        #expect(model.aliases.map(model.stateLabel) == ["5:00 left"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["5:00 left"])
     }
 
     @Test func disablingARowLaterThatWasDisabledElsewhereNeverEnablesIt() async throws {
@@ -380,7 +467,7 @@ final class AllAliasesModelTests {
 
         #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
         #expect(appModel.engine.records.isEmpty)
-        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Disabled"])
         #expect(appModel.lastError == "shop@example.com is already disabled.")
     }
 
@@ -391,7 +478,7 @@ final class AllAliasesModelTests {
 
         await model.enablePermanently(try #require(model.aliases.first))
 
-        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Enabled"])
         #expect(appModel.engine.records.isEmpty)
     }
 
@@ -403,7 +490,7 @@ final class AllAliasesModelTests {
         await model.disable(try #require(model.aliases.first))
 
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
-        #expect(model.aliases.map(model.stateLabel) == ["Disabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Disabled"])
     }
 
     @Test func aFailedDisableLeavesTheRowEnabled() async throws {
@@ -411,7 +498,7 @@ final class AllAliasesModelTests {
 
         await model.disable(try #require(model.aliases.first))
 
-        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Enabled"])
         #expect(appModel.lastError == "Could not reach SimpleLogin. Check your network connection.")
     }
 
@@ -424,7 +511,7 @@ final class AllAliasesModelTests {
         await model.keepEnabled(try #require(model.aliases.first))
 
         #expect(appModel.engine.records.isEmpty)
-        #expect(model.aliases.map(model.stateLabel) == ["Enabled"])
+        #expect(model.aliases.map { model.status(of: $0).words } == ["Enabled"])
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
     }
 
