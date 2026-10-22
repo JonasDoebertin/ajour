@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import SimpleLoginKit
 @testable import Ajour
@@ -42,7 +43,7 @@ struct MenuEntryTests {
 
     @Test func signedInListsTimedThenPinnedAliasesThenActions() {
         let sections = MenuSections(
-            timedUnpinned: [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 192))],
+            timedUnpinned: [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 192, endsAt: Date(timeIntervalSince1970: 192), length: 300))],
             pinned: [MenuAliasItem(id: 7, email: "shop@example.com", state: .disabled)]
         )
 
@@ -83,7 +84,7 @@ struct MenuEntryTests {
     }
 
     @Test func aTimedAliasOffersToDisableKeepOrExtendIt() {
-        let entry = MenuEntry.alias(MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 60)), isBusy: false)
+        let entry = MenuEntry.alias(MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 60, endsAt: Date(timeIntervalSince1970: 60), length: 300)), isBusy: false)
 
         #expect(entry == .submenu("● shop@example.com · 1:00 left", [
             .action("Copy Address", .copy(email: "shop@example.com")),
@@ -112,7 +113,7 @@ struct MenuEntryTests {
     }
 
     @Test func aBusyAliasCanStillBeCopiedButNotChanged() {
-        let entry = MenuEntry.alias(MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 60)), isBusy: true)
+        let entry = MenuEntry.alias(MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 60, endsAt: Date(timeIntervalSince1970: 60), length: 300)), isBusy: true)
 
         #expect(entry == .submenu("● shop@example.com · 1:00 left", [
             .action("Copy Address", .copy(email: "shop@example.com")),

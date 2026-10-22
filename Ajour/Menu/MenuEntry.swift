@@ -136,7 +136,7 @@ indirect enum MenuEntry: Equatable {
 extension MenuAliasItem {
     var menuTitle: String {
         let marker = state == .disabled ? "○" : "●"
-        guard case .timed(let remaining) = state else { return "\(marker) \(email)" }
+        guard case .timed(let remaining, _, _) = state else { return "\(marker) \(email)" }
         return "\(marker) \(email) · \(RemainingTime.format(remaining)) left"
     }
 }

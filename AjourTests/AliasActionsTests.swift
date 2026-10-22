@@ -58,7 +58,7 @@ struct AliasActionsTests {
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
         #expect(model.engine.record(for: 7)?.expiresAt == clock.now.addingTimeInterval(300))
         #expect(model.pinned.first?.enabled == true)
-        #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 300))])
+        #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 300, endsAt: clock.now.addingTimeInterval(300), length: 300))])
         #expect(model.lastError == nil)
     }
 
@@ -119,7 +119,7 @@ struct AliasActionsTests {
         #expect(requestCount(path: "/api/aliases/7") == 1)
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
         #expect(model.isBusy(aliasID: 7) == false)
-        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 300))
+        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 300, endsAt: clock.now.addingTimeInterval(300), length: 300))
     }
 
     @Test func signingInWithANewKeyClearsTheLastError() async throws {
@@ -228,7 +228,7 @@ struct AliasActionsTests {
         #expect(record?.enabledAt == clock.now)
         #expect(record?.expiresAt == clock.now.addingTimeInterval(3600))
         #expect(requestCount(path: "/api/aliases/7/toggle") == 0)
-        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 3600))
+        #expect(model.menuSections.pinned.first?.state == .timed(remaining: 3600, endsAt: clock.now.addingTimeInterval(3600), length: 3600))
         #expect(model.lastError == nil)
     }
 
@@ -510,7 +510,7 @@ struct AliasActionsTests {
 
         await model.tick()
 
-        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 40))])
+        #expect(model.menuSections.timedUnpinned == [MenuAliasItem(id: 9, email: "temp@example.com", state: .timed(remaining: 40, endsAt: unpinnedRecord.expiresAt, length: 60))])
         #expect(model.menuSections.pinned == [MenuAliasItem(id: 7, email: "shop@example.com", state: .disabled)])
     }
 

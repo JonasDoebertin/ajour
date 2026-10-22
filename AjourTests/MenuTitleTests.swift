@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import SimpleLoginKit
 @testable import Ajour
@@ -16,7 +17,7 @@ struct MenuTitleTests {
     }
 
     @Test func aTimedAliasShowsTheRemainingTime() {
-        let item = MenuAliasItem(id: 1, email: "shop@example.com", state: .timed(remaining: 192))
+        let item = MenuAliasItem(id: 1, email: "shop@example.com", state: .timed(remaining: 192, endsAt: Date(timeIntervalSince1970: 192), length: 300))
 
         #expect(item.menuTitle == "● shop@example.com · 3:12 left")
     }

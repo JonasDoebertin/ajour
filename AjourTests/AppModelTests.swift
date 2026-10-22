@@ -198,7 +198,7 @@ struct AppModelTests {
         let work = model.scheduleTick()
         await test.transport.waitUntilARequestIsHeld()
 
-        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 0)])
+        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 0, endsAt: start.addingTimeInterval(-60), length: 300)])
 
         test.transport.release()
         for task in work { await task.value }
@@ -217,7 +217,7 @@ struct AppModelTests {
             try await model.signOut()
         }
 
-        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 290)])
+        #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 290, endsAt: start.addingTimeInterval(290), length: 300)])
     }
 
     @Test func tickWithoutDueAliasesForwardsNoEvents() async throws {

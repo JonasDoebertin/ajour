@@ -92,7 +92,11 @@ import SimpleLoginKit
     /// A running timer, or a change the app made after the row loaded, wins over the row's enabled flag.
     func state(of alias: Alias) -> AliasMenuState {
         if let record = appModel.engine.record(for: alias.id) {
-            return .timed(remaining: max(0, record.expiresAt.timeIntervalSince(appModel.now)))
+            return .timed(
+                remaining: max(0, record.expiresAt.timeIntervalSince(appModel.now)),
+                endsAt: record.expiresAt,
+                length: record.expiresAt.timeIntervalSince(record.enabledAt)
+            )
         }
         let enabled = appModel.knownEnabled(aliasID: alias.id, since: listStartSequence) ?? alias.enabled
         return enabled ? .enabled : .disabled
@@ -102,7 +106,7 @@ import SimpleLoginKit
         switch state(of: alias) {
         case .disabled: "Disabled"
         case .enabled: "Enabled"
-        case .timed(let remaining): "\(RemainingTime.format(remaining)) left"
+        case .timed(let remaining, _, _): "\(RemainingTime.format(remaining)) left"
         }
     }
 
