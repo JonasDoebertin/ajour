@@ -26,7 +26,7 @@ The bundle identifier changed to `de.dieserjonas.ajour`, so an API key saved by 
 1. Pin a disabled test alias in the web app and open the menu. It appears under "Pinned" with the disabled symbol and the word "Disabled" under its address, at the latest a moment after the menu opens.
 2. "Enable for 5 Minutes":
    - The alias is enabled in the web app.
-   - The menu bar icon switches to the glyph with the timer dot.
+   - The menu bar icon switches to the glyph with the cutout timer badge.
    - The row stays under "Pinned" and shows "4:59 left · off at HH:MM" under the address, with the timer symbol. A timer on an unpinned alias shows under "Timers" at the top instead.
 3. The remaining time counts down while the menu is open, also while that alias's submenu is open. The submenu stays open.
 4. "Extend" ▸ "1 Hour": the remaining time jumps to about 1:00:00, and the turn-off time moves with it.
@@ -71,4 +71,4 @@ With a real account, from the menu bar: All Aliases…
 5. On a disabled, unpinned alias, choose "Enable for 5 Minutes". The row shows "5:00 left" counting down with "off at HH:MM" beneath it, and the menu shows the alias under "Timers" at the top.
 6. "Enable Permanently" on a disabled alias shows "Enabled", with no timer in the menu. "Disable" shows "Disabled". Both should match the SimpleLogin web app.
 7. "Copy Address" puts the email on the clipboard.
-8. Optional: with the network off, an action shows its error at the bottom of the window and as a single-line, shortened entry at the top of the menu.
+8. Optional: with the network off, an action shows its error at the bottom of the window and at the top of the menu as an entry with the `wifi.slash` symbol in the danger color, the title "Could not reach SimpleLogin.", and the detail line "Check your network connection."
