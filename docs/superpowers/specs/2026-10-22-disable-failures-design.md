@@ -96,21 +96,21 @@ A row whose disable fails because the key is invalid (401) keeps today's behavio
    - Message: one line per alias, `<email>: <reason>`:
      - `SimpleLogin can't be reached` or `SimpleLogin isn't responding`
      - `the API key can't change it`
-     - `still being enabled`, for an enable that hasn't finished within the 30 seconds
+     - For enables and creations that haven't finished within the 30 seconds, one line without an address, because a new alias has none yet: `1 alias being enabled or created right now` or `<n> aliases being enabled or created right now`
      - `the API key was rejected`, for HTTP 401
      - `SimpleLogin reported an error`, for anything else
      - A disable cut off by the 30 seconds counts as `SimpleLogin can't be reached`.
      *(Claude's call: the last three.)*
-   - Then: `If you sign out anyway, these aliases stay enabled.`
+   - Then: `If you sign out anyway, it stays enabled.` for one alias, `If you sign out anyway, these aliases stay enabled.` for more.
    - Buttons: **Sign Out Anyway** (destructive) and **Cancel** (default).
 4. **Sign Out Anyway** discards every remaining timer, including one saved by an enable that finished while the alert was open, removes the key, and signs out. A later sign-in doesn't disable those aliases. *(Claude's call.)*
-5. An enable or creation that finishes after the sign-out doesn't save a timer. If the alias was meant to expire, Ajour disables it again with the key it was enabled with, like an alias created for a previous account today. *(Claude's call. Otherwise an alias the person never saw in the alert would stay enabled.)*
+5. An enable, creation, or "Disable After" that finishes after the sign-out doesn't save a timer. If the alias was meant to expire, Ajour disables it again with the key it was enabled with, like an alias created for a previous account today. *(Claude's call. Otherwise an alias the person never saw in the alert would stay enabled.)*
 6. **Cancel** leaves everything as it was. The timers keep running, failed ones keep retrying.
 
 ## Constraints
 
 - Swift 6 strict concurrency, macOS 26, XcodeGen; tests with Swift Testing. SimpleLoginKit keeps its own tests.
-- All copy in English, with the punctuation used elsewhere in the app (typographic apostrophes and ellipses).
+- All copy in English, exactly as written in this document (straight apostrophes, as in the app's other messages, and the ellipsis character `…`).
 - The API key is never logged or shown, also not in error reasons.
 - The Stuck symbol is drawn like the other state symbols (`StateSymbol`), follows light, dark and Increase Contrast, and turns white in a highlighted menu row.
 
