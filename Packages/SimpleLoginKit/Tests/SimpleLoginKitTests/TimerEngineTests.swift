@@ -28,9 +28,13 @@ final class TestClock: @unchecked Sendable {
         ])
     }
 
-    private func makeEngine(store: InMemoryTimerStore? = nil, signedIn: Bool = true) -> TimerEngine {
+    private func makeEngine(
+        store: InMemoryTimerStore? = nil,
+        signedIn: Bool = true,
+        retry: RetryPolicy = .once
+    ) -> TimerEngine {
         let clock = clock
-        let engine = TimerEngine(store: store ?? self.store, now: { clock.now })
+        let engine = TimerEngine(store: store ?? self.store, now: { clock.now }, retry: retry)
         if signedIn {
             engine.api = api
         }
@@ -282,6 +286,18 @@ final class TestClock: @unchecked Sendable {
         #expect(events == [.disabled(aliasID: 1, email: "one@example.com")])
         #expect(engine.records.isEmpty)
         #expect(store.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == false)
+    }
+
+    @Test func anExpiryDisableSurvivesTwoFailedToggles() async throws {
+        let engine = makeEngine(retry: RetryPolicy(attempts: 3, delay: .zero))
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        api.toggleErrors = [APIError.transport("offline"), APIError.transport("offline")]
+        clock.advance(by: 301)
+
+        let events = await engine.processDue()
+
+        #expect(events == [.disabled(aliasID: 1, email: "one@example.com")])
         #expect(api.aliases[1]?.enabled == false)
     }
 

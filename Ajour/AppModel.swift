@@ -103,7 +103,7 @@ enum AliasActionError: Error, Equatable {
         self.copyToClipboard = copyToClipboard
         self.disableBudget = disableBudget
         self.now = now()
-        engine = TimerEngine(store: timerStore, now: now)
+        engine = TimerEngine(store: timerStore, now: now, retry: retry)
         engine.onAliasDisabled = { [weak self] in self?.aliasWasDisabled($0) }
     }
 
@@ -289,7 +289,7 @@ enum AliasActionError: Error, Equatable {
     func enablePermanently(aliasID: Int) async -> Bool {
         await perform(on: aliasID, activity: .enabling) {
             guard let api else { throw TimerEngineError.notSignedIn }
-            _ = try await AliasSwitch(api: api).ensureEnabled(aliasID: aliasID)
+            _ = try await AliasSwitch(api: api, retry: retry).ensureEnabled(aliasID: aliasID)
             recordEnabled(true, aliasID: aliasID)
         }
     }
@@ -513,7 +513,7 @@ enum AliasActionError: Error, Equatable {
     private func abandonAfterAccountChange(_ alias: Alias, using api: SimpleLoginAPI, wasToExpire: Bool) async -> AliasCreationError {
         guard wasToExpire else { return .accountChanged(email: alias.email) }
         do {
-            _ = try await AliasSwitch(api: api).ensureDisabled(aliasID: alias.id)
+            _ = try await AliasSwitch(api: api, retry: retry).ensureDisabled(aliasID: alias.id)
             return .disabledAfterAccountChange(email: alias.email)
         } catch {
             return .stillEnabledAfterAccountChange(email: alias.email)

@@ -37,15 +37,21 @@ public enum TimerEngineError: Error, Equatable {
 
     private let store: any TimerStore
     private let now: @Sendable () -> Date
+    private let retry: RetryPolicy
     /// Overlapping disables of one alias share a single attempt: two separate attempts could both
     /// read "enabled" and toggle twice, re-enabling the alias.
     @ObservationIgnored private var disablesInFlight: [Int: Task<DisableOutcome, Never>] = [:]
     /// Changes whenever the key may have changed, so a 401 answering an older key is ignored.
     @ObservationIgnored private var keyGeneration = 0
 
-    public init(store: any TimerStore, now: @escaping @Sendable () -> Date = Date.init) {
+    public init(
+        store: any TimerStore,
+        now: @escaping @Sendable () -> Date = Date.init,
+        retry: RetryPolicy = .standard
+    ) {
         self.store = store
         self.now = now
+        self.retry = retry
         do {
             records = try store.load()
         } catch let error as TimerStoreError {
@@ -70,7 +76,7 @@ public enum TimerEngineError: Error, Equatable {
         if let index = recordIndex(for: aliasID) {
             return try extendRecord(at: index, by: duration)
         }
-        let aliasSwitch = AliasSwitch(api: try signedInAPI())
+        let aliasSwitch = AliasSwitch(api: try signedInAPI(), retry: retry)
         let alias = try await aliasSwitch.ensureEnabled(aliasID: aliasID)
         return try startTimer(for: alias, duration: duration)
     }
@@ -239,7 +245,7 @@ public enum TimerEngineError: Error, Equatable {
         guard let api else {
             return Task { .failed(TimerEngineError.notSignedIn) }
         }
-        let aliasSwitch = AliasSwitch(api: api)
+        let aliasSwitch = AliasSwitch(api: api, retry: retry)
         let generation = keyGeneration
         let attempt = Task {
             let outcome = await Self.attemptDisable(aliasID: aliasID, using: aliasSwitch, keyGeneration: generation)
