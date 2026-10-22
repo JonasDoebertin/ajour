@@ -25,6 +25,9 @@ import AppKit
         } else {
             highlightedItems.removeAll()
             menu.items = entries.map(makeItem)
+            if let pointed = menu.highlightedItem, menu.items.contains(where: { $0 === pointed }) {
+                highlight(pointed, in: menu)
+            }
         }
         shownEntries = entries
     }

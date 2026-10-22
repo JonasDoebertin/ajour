@@ -192,6 +192,21 @@ struct MenuRendererTests {
         #expect(menu.items.first?.attributedTitle?.string == "shop@example.com\nDisabled")
     }
 
+    @Test func aRowRebuiltUnderThePointerStaysHighlighted() throws {
+        let menu = PointedMenu()
+        let renderer = MenuRenderer(menu: menu) { _ in }
+        renderer.show([aliasEntry(status: status(remaining: 1), children: [.action("Disable Now", .disableNow(aliasID: 7))])])
+        let item = try #require(menu.items.first)
+        renderer.highlight(item, in: menu)
+        menu.pointsAtFirstItem = true
+
+        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
+
+        let rebuilt = try #require(menu.items.first)
+        #expect(rebuilt !== item)
+        #expect(isWhite(rebuilt))
+    }
+
     @Test func rendersSubmenusWithTheirOwnEnabledState() throws {
         let renderer = makeRenderer()
 
@@ -273,6 +288,15 @@ private func aliasEntry(id: Int = 7, email: String = "shop@example.com", status:
         if color as? NSColor != .white { allWhite = false }
     }
     return allWhite
+}
+
+/// Stands in for AppKit's menu tracking, which sets the highlighted item while the pointer is over it.
+private final class PointedMenu: NSMenu {
+    var pointsAtFirstItem = false
+
+    override var highlightedItem: NSMenuItem? {
+        pointsAtFirstItem ? items.first : nil
+    }
 }
 
 @MainActor final class PerformedActions {
