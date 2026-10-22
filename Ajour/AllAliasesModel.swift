@@ -31,6 +31,8 @@ enum EmptyState: Equatable {
     private var listStartSequence = 0
     /// Changes whenever the list starts over, so a page that arrives for an older list is dropped.
     @ObservationIgnored private var generation = 0
+    /// Changes on every reload, so a total that arrives for an older reload is dropped.
+    @ObservationIgnored private var totalGeneration = 0
     @ObservationIgnored private var pendingSearch: Task<Void, Never>?
 
     @ObservationIgnored private let appModel: AppModel
@@ -47,13 +49,16 @@ enum EmptyState: Equatable {
     /// Starts the list over for the current search text.
     func reload() async {
         pendingSearch?.cancel()
+        totalGeneration += 1
+        totalAliases = nil
         async let total: Void = loadTotal()
         await startOver(query: searchText)
         await total
     }
 
     private func loadTotal() async {
-        guard let stats = try? await appModel.api?.stats() else { return }
+        let generation = totalGeneration
+        guard let stats = try? await appModel.api?.stats(), generation == totalGeneration else { return }
         totalAliases = stats.nbAlias
     }
 

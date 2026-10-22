@@ -290,6 +290,33 @@ final class AllAliasesModelTests {
         #expect(model.subtitle == subtitle)
     }
 
+    @Test func aFailedStatsCallAfterASuccessfulOneLeavesNoTotal() async throws {
+        let (model, _) = try await loadedModel((1...3).map { Fixtures.aliasJSON(id: $0) }, total: 500)
+        transport.enqueue("/api/v2/aliases", json: Self.pageJSON((1...3).map { Fixtures.aliasJSON(id: $0) }))
+
+        await model.reload()
+
+        #expect(model.totalAliases == nil)
+        #expect(model.subtitle == "3 aliases")
+    }
+
+    @Test func aTotalThatArrivesForAnOlderReloadIsIgnored() async throws {
+        let appModel = try await signedInAppModel()
+        let model = makeModel(appModel: appModel)
+        transport.holdNext("/api/stats", json: #"{"nb_alias":99}"#)
+        transport.enqueue("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 1)]))
+        let olderReload = Task { await model.reload() }
+        await transport.waitUntilARequestIsHeld()
+        transport.enqueue("/api/stats", json: #"{"nb_alias":7}"#)
+        transport.enqueue("/api/v2/aliases", json: Self.pageJSON([Fixtures.aliasJSON(id: 1)]))
+
+        await model.reload()
+        transport.release()
+        await olderReload.value
+
+        #expect(model.totalAliases == 7)
+    }
+
     @Test func subtitleUsesTheSingularForOneAlias() async throws {
         let (model, _) = try await loadedModel([Fixtures.aliasJSON(id: 1)], total: 1)
 
