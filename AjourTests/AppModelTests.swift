@@ -205,6 +205,7 @@ struct AppModelTests {
         test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
         let work = model.scheduleTick()
         await test.transport.waitUntilARequestIsHeld()
+        await test.waitUntil { model.menuSections.pinned.first?.state == .disabled }
 
         #expect(model.menuSections.pinned.map(\.state) == [.disabled, .timed(remaining: 0, endsAt: start.addingTimeInterval(-60), length: 300)])
 
@@ -255,6 +256,25 @@ struct AppModelTests {
         await model.retryDisable(aliasID: 7)
 
         #expect(test.timerStore.records.isEmpty)
+    }
+
+    @Test func tryAgainStartsRightAwayWhileAnotherAliasIsBeingDisabled() async throws {
+        let start = TestClock().now
+        let test = AppModelTests(records: [.expired(aliasID: 6, at: start), .expired(aliasID: 7, at: start)])
+        let model = try await test.signedInModel()
+        await model.tick()
+        test.transport.holdNext("/api/aliases/6", json: Fixtures.aliasJSON(id: 6, enabled: true))
+        model.engine.retryNow(aliasID: 6)
+        let work = model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await model.retryDisable(aliasID: 7)
+
+        #expect(test.timerStore.records.map(\.aliasID) == [6])
+        test.transport.release()
+        for task in work { await task.value }
     }
 
     @Test func aPartlyFailedSignOutShowsTheAliasesItDisabled() async throws {

@@ -108,7 +108,6 @@ enum AliasActionError: Error, Equatable {
     /// Counts enabled changes; a list remembers it when it loads, to tell older changes from newer ones.
     @ObservationIgnored private(set) var enabledChangeSequence = 0
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
-    @ObservationIgnored private var dueProcessing: Task<Void, Never>?
     @ObservationIgnored private var activityPoll: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
     /// Set once quitting starts, so no tick work starts and nothing more is forwarded.
@@ -470,8 +469,9 @@ enum AliasActionError: Error, Equatable {
         }
     }
 
-    /// Entry point for the tick loop and wake. Expiry processing and activity polling each run at most once
-    /// at a time and independently, so a slow poll never holds back a due disable.
+    /// Entry point for the tick loop and wake. Expiry processing and activity polling run independently, so a slow
+    /// poll never holds back a due disable. Activity polling runs at most once at a time. Expiry processing starts
+    /// whenever an alias is due, even while earlier disables still run, so a slow disable never holds back another.
     @discardableResult
     func scheduleTick() -> [Task<Void, Never>] {
         guard !isShuttingDown else { return [] }
@@ -480,16 +480,13 @@ enum AliasActionError: Error, Equatable {
     }
 
     private func startDueProcessingIfNeeded() -> Task<Void, Never>? {
-        guard dueProcessing == nil, let dueDate = engine.nextDueDate(), dueDate <= now else { return nil }
-        let work = Task {
+        guard let dueDate = engine.nextDueDate(), dueDate <= now else { return nil }
+        return Task {
             let events = await engine.processDue()
-            dueProcessing = nil
             guard !events.isEmpty, !isShuttingDown else { return }
             if events.contains(.unauthorized) { apiKeyInvalid = true }
             onTimerEvents(events)
         }
-        dueProcessing = work
-        return work
     }
 
     private func startActivityPollIfNeeded() -> Task<Void, Never>? {

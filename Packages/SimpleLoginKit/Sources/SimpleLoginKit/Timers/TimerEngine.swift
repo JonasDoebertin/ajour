@@ -146,33 +146,45 @@ public enum DisableAllOutcome: Equatable, Sendable {
         }
     }
 
+    /// Disables every alias whose timer is due, all at once, so a slow disable never holds back another one.
+    /// Events come in the order of the timers. A rejected key ends the pass: the attempts still running
+    /// are cancelled, and only the rejection is reported from then on.
     public func processDue() async -> [TimerEvent] {
-        var events: [TimerEvent] = []
-        for aliasID in records.filter(isDue).map(\.aliasID) {
-            guard api != nil else { break }
-            guard let record = record(for: aliasID), isDue(record), disablesInFlight[aliasID] == nil else { continue }
-            switch await disable(aliasID: aliasID) {
-            case .disabled:
-                events.append(.disabled(aliasID: aliasID, email: record.email))
-            case .unauthorized(let generation):
-                guard generation == keyGeneration else { continue }
-                if markAllUnauthorized() {
-                    events.append(.unauthorized)
-                }
-                return events
-            case .forbidden(let generation, _):
-                guard generation == keyGeneration, markForbidden(aliasID: aliasID) else { continue }
-                events.append(.disableForbidden(aliasID: aliasID, email: record.email))
-            case .cancelled:
-                return events
-            case .failed(let error):
-                if Task.isCancelled { return events }
-                if let problem = registerTransientFailure(aliasID: aliasID, error: error) {
-                    events.append(.disableKeepsFailing(aliasID: aliasID, email: record.email, problem: problem))
+        guard api != nil else { return [] }
+        let attempts = records.filter(isDue).map { record in
+            (aliasID: record.aliasID, email: record.email, attempt: startDisable(aliasID: record.aliasID))
+        }
+        var eventsByAliasID: [Int: TimerEvent] = [:]
+        var keyBecameInvalid = false
+
+        await withTaskGroup(of: (aliasID: Int, email: String, outcome: DisableOutcome).self) { group in
+            for (aliasID, email, attempt) in attempts {
+                group.addTask { (aliasID, email, await self.outcome(of: attempt)) }
+            }
+            for await (aliasID, email, outcome) in group {
+                switch outcome {
+                case .disabled:
+                    eventsByAliasID[aliasID] = .disabled(aliasID: aliasID, email: email)
+                case .unauthorized(let generation):
+                    guard generation == keyGeneration else { continue }
+                    keyBecameInvalid = markAllUnauthorized()
+                    group.cancelAll()
+                    return
+                case .forbidden(let generation, _):
+                    guard generation == keyGeneration, markForbidden(aliasID: aliasID) else { continue }
+                    eventsByAliasID[aliasID] = .disableForbidden(aliasID: aliasID, email: email)
+                case .cancelled:
+                    continue
+                case .failed(let error):
+                    guard !Task.isCancelled,
+                          let problem = registerTransientFailure(aliasID: aliasID, error: error)
+                    else { continue }
+                    eventsByAliasID[aliasID] = .disableKeepsFailing(aliasID: aliasID, email: email, problem: problem)
                 }
             }
         }
-        return events
+        let events = attempts.compactMap { eventsByAliasID[$0.aliasID] }
+        return keyBecameInvalid ? events + [.unauthorized] : events
     }
 
     /// Checks every running timer's alias for a mail forwarded since it was enabled and reports each mail once.
@@ -193,8 +205,9 @@ public enum DisableAllOutcome: Equatable, Sendable {
         return arrivals
     }
 
+    /// When the next disable has to start. An alias whose disable runs is not due again until it fails.
     public func nextDueDate() -> Date? {
-        records.compactMap { record -> Date? in
+        records.filter { disablesInFlight[$0.aliasID] == nil }.compactMap { record -> Date? in
             switch failures[record.aliasID] {
             case .unauthorized, .forbidden: nil
             case .transient(_, _, let nextRetryAt, _): max(nextRetryAt, record.expiresAt)
@@ -365,7 +378,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
 
     private func isDue(_ record: TimerRecord) -> Bool {
         let currentDate = now()
-        guard record.expiresAt <= currentDate else { return false }
+        guard record.expiresAt <= currentDate, disablesInFlight[record.aliasID] == nil else { return false }
         switch failures[record.aliasID] {
         case .unauthorized, .forbidden: return false
         case .transient(_, _, let nextRetryAt, _): return nextRetryAt <= currentDate

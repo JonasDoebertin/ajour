@@ -55,6 +55,23 @@ final class TestClock: @unchecked Sendable {
         }
     }
 
+    /// Gives work running in the background a bounded time to reach the expected state.
+    private func waitUntil(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !condition(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func makeEngineWithTwoTimers(holding heldAliasIDs: Set<Int>) async throws -> (TimerEngine, GatedAliasAPI) {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        let gated = GatedAliasAPI(base: api, holding: heldAliasIDs)
+        engine.api = gated
+        return (engine, gated)
+    }
+
     // MARK: - Enabling and extending
 
     @Test func enableCreatesRecordWithExpiry() async throws {
@@ -934,6 +951,65 @@ final class TestClock: @unchecked Sendable {
 
         _ = await events
         #expect(engine.disablingAliasIDs.isEmpty)
+    }
+
+    @Test func expiredAliasesAreDisablingTogether() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [1, 2])
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await waitUntil { engine.disablingAliasIDs == [1, 2] }
+        #expect(engine.disablingAliasIDs == [1, 2])
+        gated.open()
+
+        _ = await events
+    }
+
+    @Test func anExpiredAliasIsDisabledWhileAnotherAliasWaitsForItsDisable() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [1])
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.record(for: 2) == nil }
+        #expect(api.aliases[2]?.enabled == false)
+        #expect(engine.records.map(\.aliasID) == [1])
+        #expect(engine.disablingAliasIDs == [1])
+        gated.open()
+
+        #expect(await events == [
+            .disabled(aliasID: 1, email: "one@example.com"),
+            .disabled(aliasID: 2, email: "two@example.com"),
+        ])
+    }
+
+    @Test func aRejectedKeyStopsThePassWhileAnotherAliasWaitsForItsDisable() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [1])
+        api.errors = [APIError.unauthorized]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.failures[2] != nil }
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+        gated.open()
+
+        #expect(await events == [.unauthorized])
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+        #expect(engine.records.count == 2)
+        #expect(api.aliases[1]?.enabled == true)
+    }
+
+    @Test func anAliasWhoseDisableRunsIsNotDue() async throws {
+        let (engine, gated) = try await makeEngineWithGatedAPI()
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        #expect(engine.nextDueDate() == nil)
+        gated.open()
+
+        _ = await events
     }
 
     @Test func disableNowWaitsForInFlightDisable() async throws {
