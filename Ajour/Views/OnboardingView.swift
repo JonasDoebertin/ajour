@@ -43,14 +43,30 @@ struct OnboardingView: View {
 
     private var explanation: some View {
         Group {
-            Text("Welcome to Ajour")
-                .font(.title2.bold())
-            Text(AboutText.tagline)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .accessibilityHidden(true)
+                Text("Welcome to Ajour")
+                    .font(.system(size: 24, weight: .bold))
+                Text(AboutText.tagline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            FormGroup {
+                Feature(symbol: "timer", title: "Open an alias for a moment", detail: "Enable it for 5 minutes, 1 hour or 24 hours.")
+                Divider()
+                Feature(symbol: "bell", title: "Know when mail arrives", detail: "Disable it right from the notification.")
+                Divider()
+                Feature(symbol: "lock", title: "It closes on its own", detail: "When the time is up, the alias turns off again.")
+            }
             Text("Ajour needs a SimpleLogin API key to enable and disable your aliases. It never sees your password.")
-            HStack {
-                Spacer()
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            footer {
                 Button("Continue") { model.showKeyEntry() }
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -58,41 +74,96 @@ struct OnboardingView: View {
 
     private var keyEntry: some View {
         Group {
-            Text("Add Your API Key")
-                .font(.title2.bold())
-            Text("Open SimpleLogin, create a new API key, name it, for example, “Mac”, and copy it.")
-            Button("Open SimpleLogin") { openURL(Self.apiKeyPage) }
-            SecureField("API key", text: $model.apiKey)
-                .onSubmit { submit() }
+            heading("Add Your API Key", detail: "In SimpleLogin, open API Keys, create a key named “Ajour” and paste it below.")
+            Button {
+                openURL(Self.apiKeyPage)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Open SimpleLogin")
+                    Image(systemName: "arrow.up.right")
+                }
+            }
+            .buttonStyle(.bordered)
+            FormGroup {
+                LabeledContent("API Key") {
+                    SecureField("API Key", text: $model.apiKey, prompt: Text("Paste key"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .overlay {
+                            if model.errorMessage != nil {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Palette.color(Palette.danger), lineWidth: 1.5)
+                            }
+                        }
+                        .onSubmit { submit() }
+                }
+                .padding(.vertical, 4)
+            }
             if let clipboardKey, model.apiKey.isEmpty {
-                Button("Use key from clipboard") { model.apiKey = clipboardKey }
+                clipboardCard(for: clipboardKey)
             }
             if let errorMessage = model.errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+                InlineError(message: errorMessage)
             }
-            HStack {
+            footer {
                 if model.isSubmitting {
                     ProgressView()
                         .controlSize(.small)
+                    Text("Checking key…")
+                        .foregroundStyle(.secondary)
                 }
-                Spacer()
+                backButton
                 Button("Continue") { submit() }
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.canSubmit)
             }
         }
     }
 
+    private func clipboardCard(for key: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.title3)
+                .foregroundStyle(Palette.color(Palette.accentText))
+                .accessibilityHidden(true)
+            Text("API key on clipboard")
+                .fontWeight(.semibold)
+            Spacer()
+            Button("Use Key from Clipboard") { model.apiKey = key }
+                .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private func confirmation(of userInfo: UserInfo) -> some View {
         Group {
-            Text("Signed In")
-                .font(.title2.bold())
-            LabeledContent("Name", value: userInfo.name)
-            LabeledContent("Email", value: userInfo.email)
-            HStack {
-                Spacer()
+            heading("Signed In", detail: "Ajour can now manage the aliases of this account.")
+            FormGroup {
+                HStack(spacing: 12) {
+                    Text(OnboardingModel.initials(of: userInfo.name))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Palette.color(Palette.accentText))
+                        .frame(width: 44, height: 44)
+                        .background(Color.accentColor.opacity(0.12), in: Circle())
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(userInfo.name)
+                            .font(.title3.bold())
+                        Text(userInfo.email)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    KeyAcceptedBadge()
+                }
+                .padding(.vertical, 4)
+            }
+            footer {
+                backButton
                 Button("Continue") { model.confirmAccount() }
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -100,30 +171,60 @@ struct OnboardingView: View {
 
     private var finish: some View {
         Group {
-            Text("You’re All Set")
-                .font(.title2.bold())
-            Text("Ajour lives in the menu bar.")
-            Toggle("Launch at login", isOn: $launchAtLogin)
-                .toggleStyle(.checkbox)
-                .disabled(model.isFinishing || model.isComplete)
-            if let errorMessage = model.errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+            heading("You’re All Set", detail: "Ajour lives in the menu bar. Click the envelope to open an alias for a moment.")
+            MenuBarIllustration()
+            FormGroup {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .toggleStyle(.checkbox)
+                    .disabled(model.isFinishing || model.isComplete)
             }
-            HStack {
-                Spacer()
+            if let errorMessage = model.errorMessage {
+                InlineError(message: errorMessage)
+            }
+            footer {
                 if model.isComplete {
                     Button("Close") { close() }
+                        .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Done") {
                         Task { await model.finish(launchAtLogin: launchAtLogin) }
                     }
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.isFinishing)
                 }
             }
         }
+    }
+
+    private func heading(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+            Text(detail)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var backButton: some View {
+        if model.canGoBack {
+            Button("Back") { model.goBack() }
+                .buttonStyle(.bordered)
+                .disabled(model.isSubmitting)
+        }
+    }
+
+    private func footer(@ViewBuilder buttons: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            if let progress = model.progress {
+                ProgressDots(progress: progress)
+            }
+            Spacer()
+            buttons()
+        }
+        .controlSize(.large)
     }
 
     private func submit() {
@@ -136,5 +237,105 @@ struct OnboardingView: View {
     private func offerClipboardKey() {
         guard model.step == .enterKey else { return }
         clipboardKey = model.clipboardSuggestion(for: NSPasteboard.general.string(forType: .string))
+    }
+}
+
+private struct FormGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+    }
+}
+
+private struct Feature: View {
+    let symbol: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(Palette.color(Palette.accentText))
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .fontWeight(.semibold)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct InlineError: View {
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.circle")
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Palette.color(Palette.danger))
+    }
+}
+
+private struct KeyAcceptedBadge: View {
+    var body: some View {
+        Label("Key accepted", systemImage: "checkmark.circle")
+            .font(.callout.weight(.medium))
+            .foregroundStyle(Palette.color(Palette.stateOn))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Palette.color(Palette.stateOn).opacity(0.12), in: Capsule())
+    }
+}
+
+private struct ProgressDots: View {
+    let progress: OnboardingProgress
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(1...progress.total, id: \.self) { step in
+                Capsule()
+                    .fill(step <= progress.step ? Color.accentColor : Color.primary.opacity(0.15))
+                    .frame(width: step == progress.step ? 16 : 6, height: 6)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(progress.step) of \(progress.total)")
+    }
+}
+
+/// A stand-in for the menu bar that points out where Ajour lives.
+private struct MenuBarIllustration: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            Spacer()
+            Image("MenuBarGlyphIdle")
+                .padding(6)
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.accentColor, lineWidth: 1.5))
+            Image(systemName: "wifi")
+            Text(Date.now, format: .dateTime.hour().minute())
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityHidden(true)
     }
 }

@@ -1,6 +1,11 @@
 import Observation
 import SimpleLoginKit
 
+struct OnboardingProgress: Equatable {
+    let step: Int
+    let total: Int
+}
+
 /// Guides through saving an API key. Nothing is submitted without the user pressing Continue.
 @MainActor @Observable final class OnboardingModel {
     enum Step: Equatable {
@@ -39,8 +44,41 @@ import SimpleLoginKit
         !trimmedKey.isEmpty && !isSubmitting
     }
 
+    /// Replacing a key shows only the key step and its confirmation, so there is nothing to count.
+    var progress: OnboardingProgress? {
+        guard !isReplacingKey else { return nil }
+        let position = switch step {
+        case .explain: 1
+        case .enterKey: 2
+        case .confirm: 3
+        case .finish: 4
+        }
+        return OnboardingProgress(step: position, total: 4)
+    }
+
+    var canGoBack: Bool {
+        switch step {
+        case .enterKey: !isReplacingKey
+        case .confirm: true
+        case .explain, .finish: false
+        }
+    }
+
+    static func initials(of name: String) -> String {
+        let words = name.split(whereSeparator: \.isWhitespace)
+        guard let first = words.first?.first else { return "?" }
+        guard words.count > 1, let last = words.last?.first else { return String(first).uppercased() }
+        return "\(first)\(last)".uppercased()
+    }
+
     func showKeyEntry() {
         step = .enterKey
+    }
+
+    func goBack() {
+        guard canGoBack else { return }
+        step = step == .enterKey ? .explain : .enterKey
+        errorMessage = nil
     }
 
     func beginKeyReplacement() {
@@ -70,6 +108,8 @@ import SimpleLoginKit
         defer { isSubmitting = false }
         do {
             step = .confirm(try await appModel.signIn(apiKey: trimmedKey))
+        } catch APIError.unauthorized {
+            errorMessage = "SimpleLogin did not accept this key. Check that you copied all of it, or create a new one."
         } catch let error as APIError {
             errorMessage = error.userMessage
         } catch {
