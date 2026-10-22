@@ -13,7 +13,7 @@ import SwiftUI
     private var statusMenu: StatusMenuController?
 
     override init() {
-        let model = AppModel(timerStore: Self.makeTimerStore())
+        let model = Self.makeAppModel()
         let notifications = NotificationController { aliasID in
             Task { await model.disableNow(aliasID: aliasID) }
         }
@@ -38,22 +38,22 @@ import SwiftUI
         windows = WindowCoordinator { kind, windows in
             switch kind {
             case .onboarding:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     OnboardingView(model: onboarding) { [weak windows] in windows?.close(.onboarding) },
                     fitsContent: true
                 )
             case .newAlias:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     NewAliasView(model: newAlias) { [weak windows] in windows?.close(.newAlias) },
                     fitsContent: true
                 )
             case .allAliases:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     AllAliasesView(model: allAliases, appModel: model),
                     fitsContent: false
                 )
             case .settings:
-                return NSHostingController.windowContent(
+                return WindowContent.hosting(
                     SettingsView(appModel: model, settings: settings, onboarding: onboarding) { [weak windows] in
                         windows?.show(.onboarding)
                     },
@@ -109,6 +109,13 @@ import SwiftUI
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    private static func makeAppModel() -> AppModel {
+        #if DEBUG
+        if DemoMode.isEnabled { return DemoMode.makeAppModel() }
+        #endif
+        return AppModel(timerStore: makeTimerStore())
     }
 
     private static func makeTimerStore() -> any TimerStore {

@@ -33,7 +33,12 @@ struct AllAliasesView: View {
                 }
             }
         }
-        .searchable(text: $model.searchText, prompt: "Search aliases")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ToolbarSearchField(text: $model.searchText, prompt: "Search aliases")
+                    .frame(width: 220)
+            }
+        }
         .onChange(of: model.searchText) { model.scheduleSearch() }
         .task(id: appModel.session) { await model.reload() }
         .frame(minWidth: 420, minHeight: 320)
