@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SimpleLoginKit
 
 /// The sample account demo mode shows. Addresses use the reserved `example.com` domain.
 enum DemoAccount {
@@ -33,9 +34,13 @@ enum DemoAccount {
     ]
 
     /// Aliases that start with a running timer, with the seconds left.
-    static var timedAliases: [(Alias, TimeInterval)] {
+    /// Timers that started a while ago, so their countdown pies are partly used up.
+    static var timedAliases: [(alias: Alias, remaining: TimeInterval, length: TimeInterval)] {
         let byID = Dictionary(uniqueKeysWithValues: aliases.map { ($0.id, $0) })
-        return [(byID[102]!, 47 * 60 + 12), (byID[105]!, 4 * 60 + 38)]
+        return [
+            (byID[102]!, 47 * 60 + 12, AliasDuration.oneHour.seconds),
+            (byID[105]!, 4 * 60 + 38, AliasDuration.fiveMinutes.seconds),
+        ]
     }
 
     static let suffixes: [(suffix: String, isCustom: Bool)] = [

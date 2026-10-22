@@ -15,8 +15,9 @@ enum DemoMode {
     @MainActor static func makeAppModel() -> AppModel {
         let startsSignedOut = UserDefaults.standard.bool(forKey: "AjourDemoSignedOut")
         let now = Date()
-        let timers = DemoAccount.timedAliases.map { alias, remaining in
-            TimerRecord(aliasID: alias.id, email: alias.email, enabledAt: now, expiresAt: now.addingTimeInterval(remaining))
+        let timers = DemoAccount.timedAliases.map { alias, remaining, length in
+            let expiresAt = now.addingTimeInterval(remaining)
+            return TimerRecord(aliasID: alias.id, email: alias.email, enabledAt: expiresAt.addingTimeInterval(-length), expiresAt: expiresAt)
         }
         return AppModel(
             keyStore: DemoKeyStore(key: startsSignedOut ? nil : "demo-key"),
