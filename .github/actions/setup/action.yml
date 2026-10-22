@@ -1,0 +1,29 @@
+name: Set up the project
+description: Selects the Xcode version the app is developed with and generates the Xcode project.
+
+inputs:
+  xcode-version:
+    description: Xcode version installed on the runner image
+    default: "27.1"
+
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      shell: bash
+      env:
+        XCODE_VERSION: ${{ inputs.xcode-version }}
+      run: |
+        sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+        xcodebuild -version
+
+    - name: Install XcodeGen
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      run: brew install xcodegen
+
+    - name: Generate the Xcode project
+      shell: bash
+      run: xcodegen generate

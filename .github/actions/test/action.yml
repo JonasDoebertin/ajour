@@ -1,0 +1,19 @@
+name: Test
+description: Runs the SimpleLoginKit package tests and the app tests.
+
+runs:
+  using: composite
+  steps:
+    - name: Test SimpleLoginKit
+      shell: bash
+      run: swift test --package-path Packages/SimpleLoginKit
+
+    - name: Test the app
+      shell: bash
+      run: |
+        xcodebuild test \
+          -project Ajour.xcodeproj \
+          -scheme Ajour \
+          -destination "platform=macOS" \
+          -derivedDataPath build/DerivedData \
+          | xcbeautify --renderer github-actions

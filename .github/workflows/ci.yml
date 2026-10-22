@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    if: github.event.action != 'labeled'
+    runs-on: xcode-27
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/test
+
+  # Builds a downloadable app for a pull request once the `build` label is added. The label is removed right
+  # away, so adding it again builds the latest commit.
+  build:
+    if: github.event.action == 'labeled' && github.event.label.name == 'build'
+    runs-on: xcode-27
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Remove the build label
+        run: gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label build
+
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - id: build
+        uses: ./.github/actions/build
+        with:
+          build-number: ${{ github.run_number }}
+          archive-name: Ajour-pr${{ github.event.pull_request.number }}-build${{ github.run_number }}
+
+      - id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.build.outputs.archive }}
+          archive: false
+          retention-days: 14
+
+      - name: Link the build in the pull request
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Build of ${COMMIT:0:7} is ready: [download Ajour]($ARTIFACT_URL) (kept for 14 days). It is ad-hoc signed, so macOS asks once before opening it."
