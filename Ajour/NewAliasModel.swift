@@ -79,6 +79,7 @@ import SimpleLoginKit
         let generation = self.generation
         isCreating = true
         errorMessage = nil
+        createFailed = false
         defer { isCreating = false }
         do {
             _ = try await appModel.createCustomAlias(prefix: trimmedPrefix, suffix: suffix, mailboxID: mailbox.id, expiringAfter: expiry)
@@ -87,8 +88,13 @@ import SimpleLoginKit
             isComplete = true
         } catch {
             guard generation == self.generation else { return }
-            createFailed = true
-            errorMessage = "Could not create the alias. " + AppModel.userMessage(for: error)
+            let message = AppModel.userMessage(for: error)
+            if error is AliasCreationError {
+                errorMessage = message
+            } else {
+                createFailed = true
+                errorMessage = "Could not create the alias. " + message
+            }
         }
     }
 

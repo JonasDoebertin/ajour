@@ -11,11 +11,11 @@ final class NewAliasModelTests {
     private(set) var copied: [String] = []
     private(set) var announced: [String] = []
 
-    func signedInAppModel() async throws -> AppModel {
+    func signedInAppModel(timerStore: any TimerStore = InMemoryTimerStore()) async throws -> AppModel {
         let clock = clock
         let appModel = AppModel(
             keyStore: InMemoryAPIKeyStore(),
-            timerStore: InMemoryTimerStore(),
+            timerStore: timerStore,
             transport: transport,
             now: { clock.now },
             copyToClipboard: { [weak self] in self?.copied.append($0) }
@@ -233,6 +233,22 @@ final class NewAliasModelTests {
         #expect(model.errorMessage == "Could not create the alias. SimpleLogin is not responding. Try again in a moment.")
         #expect(model.submitTitle == "Try Again")
         #expect(model.canSubmit)
+    }
+
+    @Test func anAliasThatExistsDespiteTheErrorKeepsCreateAndTheUnprefixedMessage() async throws {
+        enqueueChoices()
+        let appModel = try await signedInAppModel(timerStore: UnavailableTimerStore(reason: "test"))
+        let model = NewAliasModel(appModel: appModel)
+        await model.load()
+        model.prefix = "shop"
+        model.expiry = .fiveMinutes
+        enqueueCreated()
+
+        await model.create()
+
+        #expect(model.errorMessage == "shop@my.dev was created, but its timer could not start and it is still enabled.")
+        #expect(model.submitTitle == "Create")
+        #expect(model.isComplete == false)
     }
 
     @Test func tryAgainResubmitsAndClearsTheErrorOnSuccess() async throws {
