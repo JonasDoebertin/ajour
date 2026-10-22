@@ -204,6 +204,51 @@ struct AppModelTests {
         for task in work { await task.value }
     }
 
+    @Test func wakingDefersFailureReportsForTwoMinutes() {
+        let model = makeModel()
+
+        model.didWake()
+
+        #expect(model.engine.failureReportsResumeAt == clock.now.addingTimeInterval(120))
+    }
+
+    @Test func startingDefersFailureReportsForTwoMinutes() {
+        let model = makeModel()
+
+        model.start()
+
+        #expect(model.engine.failureReportsResumeAt == clock.now.addingTimeInterval(120))
+    }
+
+    @Test func anAliasBeingDisabledAtExpiryShowsDisabling() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        let work = model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        #expect(model.activity(aliasID: 7) == .disabling)
+        #expect(model.menuState(at: test.clock.now).activities[7] == .disabling)
+
+        test.transport.release()
+        for task in work { await task.value }
+
+        #expect(model.activity(aliasID: 7) == nil)
+        #expect(model.menuState(at: test.clock.now).activities[7] == nil)
+    }
+
+    @Test func tryAgainStartsTheNextDisableRightAway() async throws {
+        let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        await model.tick()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+
+        await model.retryDisable(aliasID: 7)
+
+        #expect(test.timerStore.records.isEmpty)
+    }
+
     @Test func aPartlyFailedSignOutShowsTheAliasesItDisabled() async throws {
         let start = TestClock().now
         let test = AppModelTests(records: [.running(aliasID: 6, at: start), .running(aliasID: 7, at: start)])

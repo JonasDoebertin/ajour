@@ -86,6 +86,8 @@ enum AliasActionError: Error, Equatable {
     private static let activityPollInterval: TimeInterval = 15
     private static let aliasPageSize = 20
     private static let pinnedRefreshInterval: Duration = .seconds(60)
+    /// How long after launch or wake failed disables stay unreported, while the network settles.
+    private static let quietPeriodAfterLaunchOrWake: TimeInterval = 120
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
@@ -126,6 +128,7 @@ enum AliasActionError: Error, Equatable {
         } else {
             phase = .signedOut
         }
+        deferFailureReports()
         startTickLoop()
         observeWake()
         return accountLoad
@@ -209,7 +212,7 @@ enum AliasActionError: Error, Equatable {
             timerDataUnreadable: engine.loadError != nil,
             sections: MenuSections.make(pinned: pinned, records: engine.records, now: date),
             pinnedLoaded: pinnedLoaded,
-            activities: activities,
+            activities: activities.merging(engine.disablingAliasIDs.map { ($0, .disabling) }) { own, _ in own },
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
@@ -315,7 +318,13 @@ enum AliasActionError: Error, Equatable {
     }
 
     func activity(aliasID: Int) -> AliasActivity? {
-        activities[aliasID]
+        activities[aliasID] ?? (engine.disablingAliasIDs.contains(aliasID) ? .disabling : nil)
+    }
+
+    /// Retries a failed disable now instead of at its next scheduled attempt.
+    func retryDisable(aliasID: Int) async {
+        engine.retryNow(aliasID: aliasID)
+        await tick()
     }
 
     func isBusy(aliasID: Int) -> Bool {
@@ -444,8 +453,17 @@ enum AliasActionError: Error, Equatable {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleTick() }
+            Task { @MainActor in self?.didWake() }
         }
+    }
+
+    func didWake() {
+        deferFailureReports()
+        scheduleTick()
+    }
+
+    private func deferFailureReports() {
+        engine.failureReportsResumeAt = currentDate().addingTimeInterval(Self.quietPeriodAfterLaunchOrWake)
     }
 
     private var isActivityPollDue: Bool {
