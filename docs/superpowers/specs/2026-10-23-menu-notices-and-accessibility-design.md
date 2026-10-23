@@ -32,7 +32,7 @@ Today every `MenuEntry.notice` is a disabled `NSMenuItem` with an attributed tit
   - Symbol in the same column as the other items' images. Danger notices draw it in `Danger`; plain notices draw it like the symbols of enabled items.
   - Title: 13 pt semibold, `labelColor`.
   - Detail: 11 pt, `secondaryLabelColor`, below the title.
-- **Wrapping:** title and detail wrap between words within a fixed width, so a long detail takes a second line as in `no-pinned-aliases.webp` instead of widening the menu. The width is roughly that of the menu's alias rows in the design; the builder picks the value and checks it on screen. The 80-character split and the `…` truncation in `MenuEntry` stay as they are.
+- **Wrapping:** title and detail wrap between words within a fixed width, so a long detail takes a second line as in `no-pinned-aliases.webp` instead of widening the menu. The width is roughly that of the menu's alias rows in the design; the builder picks the value and checks it on screen. Because notices now wrap, `MenuEntry` no longer splits a long single sentence into title and detail; it stays one title. The `…` truncation moves from 80 to 160 characters. *(Changed during implementation: the split produced three bold lines and a lone gray word.)*
 - **Not selectable:** hovering doesn't highlight a notice, the keyboard skips it as it does today, and clicking it does nothing.
 - **Full text:** the tooltip and the VoiceOver label carry `fullText` when there is one, otherwise the title and detail. This settles the open tooltip question from #37.
 - **Mechanism:** a custom item view (`NSMenuItem.view`) is the expected route. The builder picks the details, as long as it updates in place like today (`MenuRenderer.show` keeps items when the layout is the same).
