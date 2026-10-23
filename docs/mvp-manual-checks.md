@@ -77,7 +77,7 @@ With a real account, from the menu bar: All Aliases…
 
 ## Accessibility
 
-Turn the settings on yourself for these checks and back off afterwards. The phrases below are what the accessibility tree carries; VoiceOver adds the role ("menu item", "text", "button") and may pause at line breaks. Anything marked "Listen for" couldn't be settled from the tree alone.
+Turn the settings on yourself for these checks and back off afterwards. Both subsections use the Debug build launched with `-AjourDemo YES`, plus `-AjourDemoSignedOut YES` for "Not set up" and onboarding; the network notice and the stuck states need a real account with Wi-Fi off, because the demo never goes online. The phrases below are what the accessibility tree carries; VoiceOver adds the role ("menu item", "text", "button") and may pause at line breaks. Anything marked "Listen for" couldn't be settled from the tree alone.
 
 ### VoiceOver
 
@@ -87,3 +87,15 @@ Turn the settings on yourself for these checks and back off afterwards. The phra
 4. New Alias: the first field reads "Prefix", then the "Suffix" and "Disable after" pop-up buttons with their values. Enter "shop" and choose 1 Hour: the preview reads "shop@alexmorgan.example" and then "off after 1 hour", each once.
 5. Settings: the account rows read "Name, Alex Morgan" and "Email, alex@example.com" as text, once each. Listen for: the value being read again on its own.
 6. Onboarding: the progress dots read "Step 1 of 4" through "Step 4 of 4". The key field reads "API Key".
+
+### Reduce Motion and Increase Contrast
+
+The quoted demo states come from the Debug build with `-AjourDemo YES`; check within five minutes of launching, while `quiet.harbor42@example.com` still runs its 5-minute timer. Check Increase Contrast in Light and in Dark (System Settings › Appearance). Keep All Aliases, New Alias, and Settings open while you switch: they should change in place. Reopen the menu after each switch. With Increase Contrast, the state, accent, and Danger colors get one step darker in Light and lighter in Dark, as in the color table of `docs/superpowers/specs/2026-10-22-ui-redesign-design.md`.
+
+1. Reduce Motion, menu: the quiet.harbor42 pie stays put while "4:32 left" counts every second, and loses a fifth of the circle each time the countdown reaches a whole minute, for example at "3:00 left". With Reduce Motion off, it shrinks a little every second.
+2. Reduce Motion, All Aliases: the same row's pie steps at the same moments while its "3:15 left" counts every second. Switching Reduce Motion with the window open takes effect within a second.
+3. Status lines: "Enabled", "4:32 left · off at 14:12", and "Disabled" in the menu, and the same words in All Aliases, take the contrast colors. In a highlighted menu row, the symbol and both lines stay white.
+4. State symbols: each symbol has the color of the words next to it, also right after a switch. With a real account, let a timer expire with Wi-Fi off (Notifications, check 6): the "Not disabled · retrying" row shows the ring with an exclamation mark, in Danger like its words.
+5. Danger and accent: "Sign Out" in Settings is in Danger. New Alias's "Create" button, once a prefix is entered, is filled with the accent color.
+6. Notices: "Not set up" (with `-AjourDemoSignedOut YES`) and "No pinned aliases yet" (unpin the four pinned aliases in All Aliases) show the title in black in Light and white in Dark, with a gray detail, not dimmed. With a real account and Wi-Fi off, the network notice's symbol is in Danger.
+7. Still-enabled sheet: with a real account, Wi-Fi off, and a running timer, Settings › Sign Out › Sign Out shows "An Alias Is Still Enabled". "Sign Out Anyway" is in Danger and Cancel is filled with the accent color; both follow a switch while the sheet is open.
