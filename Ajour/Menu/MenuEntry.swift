@@ -207,10 +207,10 @@ indirect enum MenuEntry: Equatable {
             )
         )
         let copy = MenuEntry.action("Copy Address", .copy(email: item.email), symbol: "doc.on.doc")
-        return .alias(row, [copy, .separator] + changes(of: item, isEnabled: change == nil))
+        return .alias(row, [copy, .separator] + changeActions(of: item, isEnabled: change == nil))
     }
 
-    private static func changes(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
+    private static func changeActions(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
         let disableNow = MenuEntry.action("Disable Now", .disableNow(aliasID: item.id), symbol: "poweroff", isEnabled: isEnabled)
         let keepEnabled = MenuEntry.action(
             "Keep Enabled", .keepEnabled(aliasID: item.id, email: item.email), symbol: "infinity", isEnabled: isEnabled
