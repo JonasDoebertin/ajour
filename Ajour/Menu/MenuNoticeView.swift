@@ -13,14 +13,27 @@ import AppKit
     private static let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
     private static let detailFont = NSFont.systemFont(ofSize: 11)
 
-    let titleColor = NSColor.labelColor
-    let detailColor = NSColor.secondaryLabelColor
-    private(set) var title = ""
-    private(set) var detail: String?
+    private struct Content: Equatable {
+        let title: String
+        let detail: String?
+        let symbol: String
+        let tone: MenuTone
+        let fullText: String?
+    }
+
+    private var content: Content?
     private(set) var symbolImage: NSImage?
     private var text = NSAttributedString()
     /// Until the notice is in a menu, it assumes the column of the alias rows' status symbols, the widest in Ajour's menus.
     private var imageColumnWidth: CGFloat = 16
+
+    var title: String {
+        content?.title ?? ""
+    }
+
+    var detail: String? {
+        content?.detail
+    }
 
     var maximumWidth: CGFloat {
         textLeading + Self.maximumTextWidth + Self.trailingInset
@@ -44,17 +57,20 @@ import AppKit
 
     nonisolated override var isFlipped: Bool { true }
 
+    /// Once in a menu, the notice keeps the width the menu stretched it to, so it covers its whole row.
     func show(title: String, detail: String?, symbol: String, tone: MenuTone, fullText: String?) {
-        self.title = title
-        self.detail = detail
+        let content = Content(title: title, detail: detail, symbol: symbol, tone: tone, fullText: fullText)
+        guard content != self.content else { return }
+        self.content = content
         symbolImage = Self.symbolImage(symbol, tone: tone)
-        text = Self.text(title: title, titleColor: titleColor, detail: detail, detailColor: detailColor)
+        text = Self.text(title: title, detail: detail)
         let fullText = fullText ?? [title, detail].compactMap { $0 }.joined(separator: "\n")
         toolTip = fullText
         setAccessibilityLabel(fullText)
         let textSize = Self.size(of: text)
+        let naturalWidth = textLeading + textSize.width + Self.trailingInset
         setFrameSize(NSSize(
-            width: textLeading + textSize.width + Self.trailingInset,
+            width: enclosingMenuItem?.menu == nil ? naturalWidth : max(frame.width, naturalWidth),
             height: textSize.height + 2 * Self.verticalInset
         ))
         needsDisplay = true
@@ -118,16 +134,16 @@ import AppKit
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
     }
 
-    private static func text(title: String, titleColor: NSColor, detail: String?, detailColor: NSColor) -> NSAttributedString {
+    private static func text(title: String, detail: String?) -> NSAttributedString {
         let wrapping = NSMutableParagraphStyle()
         wrapping.lineBreakMode = .byWordWrapping
-        let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: titleColor, .paragraphStyle: wrapping]
+        let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: wrapping]
         let text = NSMutableAttributedString(string: title, attributes: titleAttributes)
         if let detail {
             text.append(NSAttributedString(string: "\n", attributes: titleAttributes))
             text.append(NSAttributedString(
                 string: detail,
-                attributes: [.font: detailFont, .foregroundColor: detailColor, .paragraphStyle: wrapping]
+                attributes: [.font: detailFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: wrapping]
             ))
         }
         return text

@@ -54,10 +54,14 @@ struct MenuRendererTests {
         let view = try noticeView(of: item)
         #expect(view.title == "Not set up")
         #expect(view.detail == "Add a SimpleLogin API key to manage your aliases.")
-        #expect(view.titleColor == .labelColor)
-        #expect(view.detailColor == .secondaryLabelColor)
         #expect(view.symbolImage != nil)
         #expect(item.isEnabled == false)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let lines = try strongestColorPerLine(drawnBy: view, in: appearance)
+            #expect(lines.count == 3)
+            #expect(lines.first?.matches(.labelColor, in: appearance) == true)
+            #expect(lines.dropFirst().allSatisfy { $0.matches(.secondaryLabelColor, in: appearance) })
+        }
     }
 
     @Test func dangerNoticesDrawTheirSymbolInTheDangerColor() throws {
@@ -98,8 +102,8 @@ struct MenuRendererTests {
         let message = "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled."
 
         renderer.show([.notice(
-            title: "shop-blue-7421@simplelogin.com was enabled for the previous account and has been",
-            detail: "disabled.",
+            title: "shop-blue-7421@simplelogin.com was enabled for the previous…",
+            detail: nil,
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
@@ -187,19 +191,43 @@ struct MenuRendererTests {
 
     @Test func aNoticeIsNeverHighlighted() throws {
         let renderer = makeRenderer()
-        let notice = MenuEntry.notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger)
-        renderer.show([notice, aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
-        let item = try #require(menu.items.first)
+        let danger = MenuEntry.notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger)
+        let plain = MenuEntry.notice(title: "Offline", detail: "Check the connection.", symbol: "wifi.slash")
+        renderer.show([danger, plain, aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let dangerItem = menu.items[0]
+        let plainItem = menu.items[1]
 
-        renderer.highlight(item, in: menu)
-        renderer.show([notice, aliasEntry(status: travelStatus(words: "47:05 left"), children: [])])
+        renderer.highlight(dangerItem, in: menu)
+        renderer.show([danger, plain, aliasEntry(status: travelStatus(words: "47:05 left"), children: [])])
+        let symbolColors = try opaqueColors(of: try #require(try noticeView(of: dangerItem).symbolImage))
+        renderer.highlight(plainItem, in: menu)
+        renderer.show([danger, plain, aliasEntry(status: travelStatus(words: "47:04 left"), children: [])])
+        let lines = try strongestColorPerLine(drawnBy: try noticeView(of: plainItem), in: .aqua)
 
-        let view = try noticeView(of: item)
-        #expect(menu.items.first === item)
-        #expect(view.titleColor == .labelColor)
-        #expect(view.detailColor == .secondaryLabelColor)
-        let colors = try opaqueColors(of: try #require(view.symbolImage))
-        #expect(!colors.isEmpty && colors.allSatisfy { $0.isClose(to: Palette.danger) })
+        #expect(menu.items[0] === dangerItem && menu.items[1] === plainItem)
+        #expect(!symbolColors.isEmpty && symbolColors.allSatisfy { $0.isClose(to: Palette.danger) })
+        #expect(lines.count == 2)
+        #expect(lines.first?.matches(.labelColor, in: .aqua) == true)
+        #expect(lines.last?.matches(.secondaryLabelColor, in: .aqua) == true)
+    }
+
+    @Test func aStretchedNoticeKeepsItsWidthWhenUpdatedInPlace() throws {
+        let renderer = makeRenderer()
+        let offline = MenuEntry.notice(title: "Offline", detail: nil, symbol: "wifi.slash")
+        renderer.show([offline, aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let view = try noticeView(of: try #require(menu.items.first))
+        view.setFrameSize(NSSize(width: 500, height: view.frame.height))
+
+        renderer.show([offline, aliasEntry(status: travelStatus(words: "47:05 left"), children: [])])
+        let widthWithSameContent = view.frame.width
+        renderer.show([
+            .notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "wifi.slash"),
+            aliasEntry(status: travelStatus(words: "47:04 left"), children: []),
+        ])
+
+        #expect(try noticeView(of: try #require(menu.items.first)) === view)
+        #expect(widthWithSameContent == 500)
+        #expect(view.frame.width == 500)
     }
 
     @Test func aliasRowShowsAddressAndStatusLines() throws {
@@ -416,6 +444,29 @@ private final class PointedMenu: NSMenu {
     var actions: [MenuAction] = []
 }
 
+/// Draws `view` in `appearance` and returns, for each band of rows with something drawn in it, the most opaque color
+/// drawn there. Glyph stems are covered fully, so that color is the text color, not an antialiased edge.
+@MainActor private func strongestColorPerLine(drawnBy view: NSView, in appearance: NSAppearance.Name) throws -> [NSColor] {
+    view.appearance = NSAppearance(named: appearance)
+    defer { view.appearance = nil }
+    let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    let rows = (0..<bitmap.pixelsHigh).map { y in
+        (0..<bitmap.pixelsWide).compactMap { x in bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) }
+            .filter { $0.alphaComponent > 0.1 }
+    }
+    var lines: [[NSColor]] = []
+    var previousRowWasEmpty = true
+    for row in rows {
+        if !row.isEmpty {
+            if previousRowWasEmpty { lines.append([]) }
+            lines[lines.count - 1] += row
+        }
+        previousRowWasEmpty = row.isEmpty
+    }
+    return lines.compactMap { $0.max { $0.alphaComponent < $1.alphaComponent } }
+}
+
 /// The colors of the fully opaque pixels of `image`, drawn in the light appearance.
 @MainActor private func opaqueColors(of image: NSImage) throws -> [NSColor] {
     try colors(of: image, in: .aqua).filter { $0.alphaComponent == 1 }
@@ -442,6 +493,16 @@ private final class PointedMenu: NSMenu {
 }
 
 private extension NSColor {
+    /// Compares opacity too, which tells the label color from the secondary label color in the same appearance.
+    @MainActor func matches(_ other: NSColor, in appearance: NSAppearance.Name) -> Bool {
+        var resolved: NSColor?
+        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+            resolved = other.usingColorSpace(.deviceRGB)
+        }
+        guard let resolved else { return false }
+        return isClose(to: other, in: appearance) && abs(alphaComponent - resolved.alphaComponent) < 0.06
+    }
+
     @MainActor func isClose(to other: NSColor, in appearance: NSAppearance.Name = .aqua) -> Bool {
         var resolved: NSColor?
         NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
