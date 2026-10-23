@@ -14,7 +14,7 @@ struct MenuEntryTests {
         lastErrorIsNetwork: Bool = false,
         sections: MenuSections = MenuSections(timedUnpinned: [], pinned: []),
         pinnedLoaded: Bool = true,
-        activities: [Int: Ajour.AliasActivity] = [:],
+        changes: [Int: AliasChange] = [:],
         reducesMotion: Bool = false
     ) -> MenuState {
         MenuState(
@@ -22,7 +22,7 @@ struct MenuEntryTests {
             lastError: lastError,
             sections: sections,
             pinnedLoaded: pinnedLoaded,
-            activities: activities,
+            changes: changes,
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: reducesMotion,
             locale: german,
@@ -30,9 +30,9 @@ struct MenuEntryTests {
         )
     }
 
-    private func entry(for item: MenuAliasItem, pinned: Bool = false, activity: Ajour.AliasActivity? = nil) -> MenuEntry {
-        let activities = activity.map { [item.id: $0] } ?? [:]
-        return MenuEntry.alias(item, pinned: pinned, state: state(activities: activities))
+    private func entry(for item: MenuAliasItem, pinned: Bool = false, change: AliasChange? = nil) -> MenuEntry {
+        let changes = change.map { [item.id: $0] } ?? [:]
+        return MenuEntry.alias(item, pinned: pinned, state: state(changes: changes))
     }
 
     private func children(of entry: MenuEntry) -> [MenuEntry] {
@@ -77,7 +77,7 @@ struct MenuEntryTests {
 
         #expect(entries == [
             .notice(
-                title: String(repeating: "a", count: 79) + "…",
+                title: String(repeating: "a", count: 81),
                 detail: nil,
                 symbol: "exclamationmark.triangle",
                 tone: .danger,
@@ -104,14 +104,14 @@ struct MenuEntryTests {
         ))
     }
 
-    @Test func aLongErrorDetailIsShortenedToEightyCharacters() {
-        let message = "Something failed. " + String(repeating: "b", count: 81)
+    @Test func aLongErrorDetailIsShortenedToTheMaximumLength() {
+        let message = "Something failed. " + String(repeating: "b", count: 161)
 
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
         #expect(entries.first == .notice(
             title: "Something failed.",
-            detail: String(repeating: "b", count: 79) + "…",
+            detail: String(repeating: "b", count: 159) + "…",
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
@@ -119,42 +119,31 @@ struct MenuEntryTests {
     }
 
     @Test(arguments: [
-        (
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled.",
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been",
-            "disabled."
-        ),
-        (
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and could not be disabled.",
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and could",
-            "not be disabled."
-        ),
-        (
-            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was started.",
-            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was",
-            "started."
-        ),
+        "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled.",
+        "shop-blue-7421@simplelogin.com was enabled for the previous account and could not be disabled.",
+        "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was started.",
     ])
-    func aLongSentenceContinuesOnTheDetailLine(message: String, title: String, detail: String) {
+    func aLongSingleSentenceStaysTheTitle(message: String) {
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
         #expect(entries.first == .notice(
-            title: title,
-            detail: detail,
+            title: message,
+            detail: nil,
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
         ))
     }
 
-    @Test func theContinuationOfALongSentenceIsShortenedToEightyCharacters() {
-        let message = String(repeating: "word ", count: 40) + "end."
+    @Test func aVeryLongMessageIsShortenedToTheMaximumLengthButKeptInFull() {
+        let message = String(repeating: "word ", count: 39) + "done."
 
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
+        #expect(message.count == 200)
         #expect(entries.first == .notice(
-            title: String(repeating: "word ", count: 16).trimmingCharacters(in: .whitespaces),
-            detail: String(String(repeating: "word ", count: 24).prefix(79)) + "…",
+            title: String(message.prefix(159)) + "…",
+            detail: nil,
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
@@ -256,9 +245,9 @@ struct MenuEntryTests {
         let row = try #require(row(of: entries[1]))
         #expect(row.id == 7)
         #expect(row.email == "shop@example.com")
-        #expect(row.status == AliasStatus.make(state: sections.pinned[0].state, activity: nil, locale: german, timeZone: berlin))
+        #expect(row.status == AliasStatus.make(state: sections.pinned[0].state, change: nil, locale: german, timeZone: berlin))
         #expect(row.accessibilityLabel == AliasStatus.accessibilityLabel(
-            email: "shop@example.com", pinned: true, state: sections.pinned[0].state, activity: nil, locale: german, timeZone: berlin
+            email: "shop@example.com", pinned: true, state: sections.pinned[0].state, change: nil, locale: german, timeZone: berlin
         ))
         #expect(row.accessibilityLabel.contains("pinned"))
     }
@@ -306,7 +295,7 @@ struct MenuEntryTests {
     }
 
     @Test func busyAliasDisablesChangesButNotCopy() throws {
-        let entry = entry(for: timedItem, activity: .enabling)
+        let entry = entry(for: timedItem, change: .enabling)
 
         #expect(try #require(row(of: entry)).status.line == "Enabling…")
         #expect(children(of: entry) == [
@@ -352,7 +341,7 @@ struct MenuEntryTests {
     }
 
     @Test func aBusyFailingAliasDisablesItsChanges() {
-        let entries = children(of: entry(for: failingItem, activity: .disabling))
+        let entries = children(of: entry(for: failingItem, change: .disabling))
 
         #expect(entries.dropFirst(2).allSatisfy { entry in
             switch entry {

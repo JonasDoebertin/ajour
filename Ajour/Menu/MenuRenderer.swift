@@ -62,6 +62,7 @@ import AppKit
         case .notice:
             item = NSMenuItem()
             item.isEnabled = false
+            item.view = MenuNoticeView()
         case let .action(title, _, _, shortcut, isEnabled, _):
             item = NSMenuItem(title: title, action: #selector(performAction(of:)), keyEquivalent: shortcut)
             item.target = self
@@ -100,14 +101,15 @@ import AppKit
         let isHighlighted = highlightedItems.values.contains { $0 === item }
         switch entry {
         case let .notice(title, detail, symbol, tone, fullText):
-            item.attributedTitle = Self.noticeTitle(title, detail: detail)
-            item.image = Self.symbolImage(symbol, tone: tone)
-            item.toolTip = fullText
-            item.setAccessibilityLabel(fullText)
+            item.title = title
+            let view = item.view as? MenuNoticeView
+            view?.show(title: title, detail: detail, symbol: symbol, tone: tone, fullText: fullText)
+            item.setAccessibilityTitle(view?.spokenText)
         case let .alias(row, _):
             item.attributedTitle = Self.aliasTitle(row, isHighlighted: isHighlighted)
             item.image = StateSymbol.image(for: row.status.kind, highlighted: isHighlighted)
-            item.setAccessibilityLabel(row.accessibilityLabel)
+            // Replaces the two visible lines for VoiceOver; a label would be read in addition to them.
+            item.setAccessibilityTitle(row.accessibilityLabel)
         case let .action(title, _, symbol, _, _, tone):
             item.title = title
             item.image = symbol.flatMap { Self.symbolImage($0, tone: tone, isHighlighted: isHighlighted) }
@@ -124,13 +126,6 @@ import AppKit
         guard tone == .danger else { return image }
         let color = isHighlighted ? NSColor.white : Palette.danger
         return image?.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color]))
-    }
-
-    private static func noticeTitle(_ title: String, detail: String?) -> NSAttributedString {
-        twoLineTitle(
-            title, font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor,
-            detail: detail, detailFont: .systemFont(ofSize: 11), detailColor: .secondaryLabelColor
-        )
     }
 
     private static func aliasTitle(_ row: MenuAliasRow, isHighlighted: Bool) -> NSAttributedString {

@@ -121,12 +121,12 @@ struct AliasActionsTests {
         transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
         let first = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
         await transport.waitUntilARequestIsHeld()
-        #expect(model.activity(aliasID: 7) == .enabling)
+        #expect(model.change(aliasID: 7) == .enabling)
 
         transport.release()
         _ = await first.value
 
-        #expect(model.activity(aliasID: 7) == nil)
+        #expect(model.change(aliasID: 7) == nil)
     }
 
     @Test func aRepeatedActionOnTheSameAliasIsIgnoredWhileTheFirstRuns() async throws {
@@ -135,7 +135,7 @@ struct AliasActionsTests {
         transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
         let first = Task { await model.enable(aliasID: 7, for: .fiveMinutes) }
         await transport.waitUntilARequestIsHeld()
-        #expect(model.activity(aliasID: 7) != nil)
+        #expect(model.change(aliasID: 7) != nil)
 
         await model.enable(aliasID: 7, for: .fiveMinutes)
         await model.disableNow(aliasID: 7)
@@ -144,7 +144,7 @@ struct AliasActionsTests {
 
         #expect(requestCount(path: "/api/aliases/7") == 1)
         #expect(requestCount(path: "/api/aliases/7/toggle") == 1)
-        #expect(model.activity(aliasID: 7) == nil)
+        #expect(model.change(aliasID: 7) == nil)
         #expect(model.menuSections.pinned.first?.state == .timed(remaining: 300, endsAt: clock.now.addingTimeInterval(300), length: 300))
     }
 

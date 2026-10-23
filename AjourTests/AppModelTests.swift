@@ -236,14 +236,14 @@ struct AppModelTests {
         let work = model.scheduleTick()
         await test.transport.waitUntilARequestIsHeld()
 
-        #expect(model.activity(aliasID: 7) == .disabling)
-        #expect(model.menuState(at: test.clock.now).activities[7] == .disabling)
+        #expect(model.change(aliasID: 7) == .disabling)
+        #expect(model.menuState(at: test.clock.now).changes[7] == .disabling)
 
         test.transport.release()
         for task in work { await task.value }
 
-        #expect(model.activity(aliasID: 7) == nil)
-        #expect(model.menuState(at: test.clock.now).activities[7] == nil)
+        #expect(model.change(aliasID: 7) == nil)
+        #expect(model.menuState(at: test.clock.now).changes[7] == nil)
     }
 
     @Test func tryAgainStartsTheNextDisableRightAway() async throws {

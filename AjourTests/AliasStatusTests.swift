@@ -20,11 +20,11 @@ struct AliasStatusTests {
 
     private func status(
         _ state: AliasMenuState,
-        activity: Ajour.AliasActivity? = nil,
+        change: AliasChange? = nil,
         reducesMotion: Bool = false,
         locale: Locale? = nil
     ) -> AliasStatus {
-        AliasStatus.make(state: state, activity: activity, reducesMotion: reducesMotion, locale: locale ?? german, timeZone: berlin)
+        AliasStatus.make(state: state, change: change, reducesMotion: reducesMotion, locale: locale ?? german, timeZone: berlin)
     }
 
     private func shareLeft(of status: AliasStatus) -> Double? {
@@ -35,10 +35,10 @@ struct AliasStatusTests {
     private func label(
         pinned: Bool = false,
         state: AliasMenuState,
-        activity: Ajour.AliasActivity? = nil,
+        change: AliasChange? = nil,
         email: String = "github@alexmorgan.example"
     ) -> String {
-        AliasStatus.accessibilityLabel(email: email, pinned: pinned, state: state, activity: activity, locale: german, timeZone: berlin)
+        AliasStatus.accessibilityLabel(email: email, pinned: pinned, state: state, change: change, locale: german, timeZone: berlin)
     }
 
     @Test func enabledAndDisabledStatesUseTheirWords() {
@@ -81,8 +81,8 @@ struct AliasStatusTests {
         #expect(status(timed(remaining: 61, length: 300), reducesMotion: true).words == "1:01 left")
     }
 
-    @Test func busyAliasShowsItsActivity() {
-        let status = status(.disabled, activity: .enabling)
+    @Test func busyAliasShowsItsChange() {
+        let status = status(.disabled, change: .enabling)
 
         #expect(status.kind == .busy)
         #expect(status.line == "Enabling…")
@@ -90,16 +90,16 @@ struct AliasStatusTests {
     }
 
     @Test func busyTimedAliasHidesItsTurnOffTime() {
-        let status = status(timed(remaining: 272), activity: .updating)
+        let status = status(timed(remaining: 272), change: .updating)
 
         #expect(status.line == "Updating…")
         #expect(status.turnsOff == nil)
     }
 
-    @Test func everyActivityHasItsWords() {
-        #expect(Ajour.AliasActivity.enabling.words == "Enabling…")
-        #expect(Ajour.AliasActivity.disabling.words == "Disabling…")
-        #expect(Ajour.AliasActivity.updating.words == "Updating…")
+    @Test func everyChangeHasItsWords() {
+        #expect(AliasChange.enabling.words == "Enabling…")
+        #expect(AliasChange.disabling.words == "Disabling…")
+        #expect(AliasChange.updating.words == "Updating…")
     }
 
     @Test func voiceOverReadsTheWholeState() {
@@ -120,9 +120,9 @@ struct AliasStatusTests {
         #expect(label(pinned: true, state: .disabled) == "github@alexmorgan.example, pinned, disabled")
     }
 
-    @Test func voiceOverReadsTheActivityInsteadOfTheState() {
-        #expect(label(state: .disabled, activity: .enabling) == "github@alexmorgan.example, enabling")
-        #expect(label(pinned: true, state: timed(remaining: 120), activity: .disabling) == "github@alexmorgan.example, pinned, disabling")
+    @Test func voiceOverReadsTheChangeInsteadOfTheState() {
+        #expect(label(state: .disabled, change: .enabling) == "github@alexmorgan.example, enabling")
+        #expect(label(pinned: true, state: timed(remaining: 120), change: .disabling) == "github@alexmorgan.example, pinned, disabling")
     }
 
     @Test func aFailingDisableSaysItKeepsTrying() {
@@ -146,11 +146,11 @@ struct AliasStatusTests {
             == "shop@example.com, pinned, can't be disabled with the current API key")
     }
 
-    @Test func anActivityWinsOverAFailedDisable() {
-        let status = status(.disableFailing, activity: .disabling)
+    @Test func aChangeWinsOverAFailedDisable() {
+        let status = status(.disableFailing, change: .disabling)
 
         #expect(status.kind == .busy)
         #expect(status.line == "Disabling…")
-        #expect(label(state: .disableRefused, activity: .disabling) == "github@alexmorgan.example, disabling")
+        #expect(label(state: .disableRefused, change: .disabling) == "github@alexmorgan.example, disabling")
     }
 }

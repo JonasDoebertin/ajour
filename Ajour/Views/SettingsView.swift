@@ -105,6 +105,7 @@ struct SettingsView: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isStaticText)
     }
 
     @ViewBuilder private var general: some View {

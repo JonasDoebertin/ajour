@@ -130,18 +130,21 @@ enum EmptyState: Equatable {
     func status(of alias: Alias) -> AliasStatus {
         AliasStatus.make(
             state: state(of: alias),
-            activity: appModel.activity(aliasID: alias.id),
+            change: appModel.change(aliasID: alias.id),
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
     }
 
+    /// The row shows the note under the address, so VoiceOver reads it too, after the status.
     func accessibilityLabel(for alias: Alias) -> String {
-        AliasStatus.accessibilityLabel(
+        let status = AliasStatus.accessibilityLabel(
             email: alias.email,
             pinned: alias.pinned,
             state: state(of: alias),
-            activity: appModel.activity(aliasID: alias.id)
+            change: appModel.change(aliasID: alias.id)
         )
+        guard let note = alias.note, !note.isEmpty else { return status }
+        return status + ", " + note
     }
 
     var sections: [AliasSection] {

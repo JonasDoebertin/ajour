@@ -27,7 +27,7 @@ struct MenuState {
     var sections = MenuSections(timedUnpinned: [], pinned: [])
     /// False until the pinned list has loaded for the current key, so the menu doesn't call it empty before.
     var pinnedLoaded = false
-    var activities: [Int: AliasActivity] = [:]
+    var changes: [Int: AliasChange] = [:]
     var lastErrorIsNetwork = false
     var reducesMotion = false
     var locale: Locale = .current
@@ -118,28 +118,19 @@ indirect enum MenuEntry: Equatable {
         return problems
     }
 
-    private static let lineLength = 80
+    private static let maximumMessageLength = 160
 
-    /// A long server message would stretch the whole menu.
+    /// The notice wraps a long message, but a very long server message would still make the menu tall.
     private static func truncated(_ text: String) -> String {
-        guard text.count > lineLength else { return text }
-        return text.prefix(lineLength - 1) + "…"
-    }
-
-    /// A long single sentence breaks between words and continues on the detail line, so the words that say
-    /// what happened, which often follow an alias address, stay visible.
-    private static func lines(of problem: ProblemMessage) -> (title: String, detail: String?) {
-        guard problem.detail == nil, problem.title.count > lineLength,
-              let lastSpace = problem.title.prefix(lineLength + 1).lastIndex(of: " ")
-        else { return (problem.title, problem.detail) }
-        return (String(problem.title[..<lastSpace]), String(problem.title[problem.title.index(after: lastSpace)...]))
+        guard text.count > maximumMessageLength else { return text }
+        return text.prefix(maximumMessageLength - 1) + "…"
     }
 
     private static func errorNotice(for message: String, isNetwork: Bool) -> MenuEntry {
-        let (title, detail) = lines(of: ProblemMessage(message))
+        let problem = ProblemMessage(message)
         return .notice(
-            title: truncated(title),
-            detail: detail.map(truncated),
+            title: truncated(problem.title),
+            detail: problem.detail.map(truncated),
             symbol: isNetwork ? "wifi.slash" : "exclamationmark.triangle",
             tone: .danger,
             fullText: message
@@ -195,13 +186,13 @@ indirect enum MenuEntry: Equatable {
     }
 
     static func alias(_ item: MenuAliasItem, pinned: Bool, state: MenuState) -> MenuEntry {
-        let activity = state.activities[item.id]
+        let change = state.changes[item.id]
         let row = MenuAliasRow(
             id: item.id,
             email: item.email,
             status: AliasStatus.make(
                 state: item.state,
-                activity: activity,
+                change: change,
                 reducesMotion: state.reducesMotion,
                 locale: state.locale,
                 timeZone: state.timeZone
@@ -210,16 +201,16 @@ indirect enum MenuEntry: Equatable {
                 email: item.email,
                 pinned: pinned,
                 state: item.state,
-                activity: activity,
+                change: change,
                 locale: state.locale,
                 timeZone: state.timeZone
             )
         )
         let copy = MenuEntry.action("Copy Address", .copy(email: item.email), symbol: "doc.on.doc")
-        return .alias(row, [copy, .separator] + changes(of: item, isEnabled: activity == nil))
+        return .alias(row, [copy, .separator] + changeActions(of: item, isEnabled: change == nil))
     }
 
-    private static func changes(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
+    private static func changeActions(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
         let disableNow = MenuEntry.action("Disable Now", .disableNow(aliasID: item.id), symbol: "poweroff", isEnabled: isEnabled)
         let keepEnabled = MenuEntry.action(
             "Keep Enabled", .keepEnabled(aliasID: item.id, email: item.email), symbol: "infinity", isEnabled: isEnabled
