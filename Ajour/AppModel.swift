@@ -82,7 +82,7 @@ enum AliasActionError: Error, Equatable {
         didSet { if lastError == nil { lastErrorIsNetwork = false } }
     }
     private(set) var lastErrorIsNetwork = false
-    private var activities: [Int: AliasActivity] = [:]
+    private var changes: [Int: AliasChange] = [:]
     let engine: TimerEngine
     private(set) var api: SimpleLoginAPI?
     @ObservationIgnored var onTimerEvents: ([TimerEvent]) -> Void = { _ in }
@@ -301,7 +301,7 @@ enum AliasActionError: Error, Equatable {
             timerDataUnreadable: engine.loadError != nil,
             sections: MenuSections.make(pinned: pinned, records: engine.records, failures: engine.failures, now: date),
             pinnedLoaded: pinnedLoaded,
-            activities: activities.merging(engine.disablingAliasIDs.map { ($0, .disabling) }) { own, _ in own },
+            changes: changes.merging(engine.disablingAliasIDs.map { ($0, .disabling) }) { own, _ in own },
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
@@ -310,7 +310,7 @@ enum AliasActionError: Error, Equatable {
     @discardableResult
     func enable(aliasID: Int, for duration: AliasDuration) async -> Bool {
         await whileEnabling {
-            await perform(on: aliasID, activity: .enabling) {
+            await perform(on: aliasID, change: .enabling) {
                 _ = try await engine.enable(aliasID: aliasID, for: duration)
                 recordEnabled(true, aliasID: aliasID)
             }
@@ -323,7 +323,7 @@ enum AliasActionError: Error, Equatable {
 
     @discardableResult
     func disableNow(aliasID: Int) async -> Bool {
-        await perform(on: aliasID, activity: .disabling) {
+        await perform(on: aliasID, change: .disabling) {
             try await engine.disableNow(aliasID: aliasID)
         }
     }
@@ -333,7 +333,7 @@ enum AliasActionError: Error, Equatable {
     @discardableResult
     func disableAfter(aliasID: Int, duration: AliasDuration) async -> Bool {
         await whileEnabling {
-            await perform(on: aliasID, activity: .updating) {
+            await perform(on: aliasID, change: .updating) {
                 guard let api else { throw TimerEngineError.notSignedIn }
                 let session = self.session
                 let alias = try await api.alias(id: aliasID)
@@ -371,7 +371,7 @@ enum AliasActionError: Error, Equatable {
     /// Pinned aliases are listed in the menu. The menu's list changes right away and is then reloaded.
     @discardableResult
     func setPinned(_ isPinned: Bool, alias: Alias) async -> Bool {
-        let succeeded = await perform(on: alias.id, activity: .updating) {
+        let succeeded = await perform(on: alias.id, change: .updating) {
             guard let api else { throw TimerEngineError.notSignedIn }
             try await api.setPinned(isPinned, aliasID: alias.id)
             patchPinnedList(with: alias.settingPinned(isPinned))
@@ -383,7 +383,7 @@ enum AliasActionError: Error, Equatable {
     /// Keeps the alias enabled until the user disables it, so no timer starts.
     @discardableResult
     func enablePermanently(aliasID: Int) async -> Bool {
-        await perform(on: aliasID, activity: .enabling) {
+        await perform(on: aliasID, change: .enabling) {
             guard let api else { throw TimerEngineError.notSignedIn }
             _ = try await AliasSwitch(api: api, retry: retry).ensureEnabled(aliasID: aliasID)
             recordEnabled(true, aliasID: aliasID)
@@ -393,7 +393,7 @@ enum AliasActionError: Error, Equatable {
     /// Stops the alias's timer and leaves the alias enabled. A timer that already ended has disabled the alias.
     @discardableResult
     func keepEnabled(aliasID: Int, email: String) async -> Bool {
-        await perform(on: aliasID, activity: .updating) {
+        await perform(on: aliasID, change: .updating) {
             do {
                 try engine.cancelTimer(aliasID: aliasID)
             } catch TimerEngineError.noTimer {
@@ -410,8 +410,8 @@ enum AliasActionError: Error, Equatable {
         return change.enabled
     }
 
-    func activity(aliasID: Int) -> AliasActivity? {
-        activities[aliasID] ?? (engine.disablingAliasIDs.contains(aliasID) ? .disabling : nil)
+    func change(aliasID: Int) -> AliasChange? {
+        changes[aliasID] ?? (engine.disablingAliasIDs.contains(aliasID) ? .disabling : nil)
     }
 
     /// Retries a failed disable now instead of at its next scheduled attempt.
@@ -421,7 +421,7 @@ enum AliasActionError: Error, Equatable {
     }
 
     func isBusy(aliasID: Int) -> Bool {
-        activity(aliasID: aliasID) != nil
+        change(aliasID: aliasID) != nil
     }
 
     func copy(email: String) {
@@ -582,10 +582,10 @@ enum AliasActionError: Error, Equatable {
 
     /// Ignores a second action on the alias while one runs: two enables could both read "disabled"
     /// and toggle twice, leaving the alias disabled. Returns whether the action ran and succeeded.
-    private func perform(on aliasID: Int, activity: AliasActivity, _ action: () async throws -> Void) async -> Bool {
-        guard activities[aliasID] == nil else { return false }
-        activities[aliasID] = activity
-        defer { activities[aliasID] = nil }
+    private func perform(on aliasID: Int, change: AliasChange, _ action: () async throws -> Void) async -> Bool {
+        guard changes[aliasID] == nil else { return false }
+        changes[aliasID] = change
+        defer { changes[aliasID] = nil }
         do {
             try await action()
             lastError = nil

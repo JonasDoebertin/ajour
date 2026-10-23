@@ -1,8 +1,8 @@
 import Foundation
 import SimpleLoginKit
 
-/// What the app is doing to an alias right now.
-enum AliasActivity: Equatable {
+/// A change to an alias that is still running.
+enum AliasChange: Equatable {
     case enabling, disabling, updating
 
     var words: String {
@@ -37,13 +37,13 @@ struct AliasStatus: Equatable {
     /// With reduced motion, the pie's share steps once per minute, while the words keep counting every second.
     static func make(
         state: AliasMenuState,
-        activity: AliasActivity?,
+        change: AliasChange?,
         reducesMotion: Bool = false,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> AliasStatus {
-        if let activity {
-            return AliasStatus(kind: .busy, words: activity.words, turnsOff: nil)
+        if let change {
+            return AliasStatus(kind: .busy, words: change.words, turnsOff: nil)
         }
         switch state {
         case .enabled:
@@ -68,14 +68,14 @@ struct AliasStatus: Equatable {
         email: String,
         pinned: Bool,
         state: AliasMenuState,
-        activity: AliasActivity?,
+        change: AliasChange?,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
         var parts = [email]
         if pinned { parts.append("pinned") }
-        if let activity {
-            parts.append(activity.spokenWords)
+        if let change {
+            parts.append(change.spokenWords)
             return parts.joined(separator: ", ")
         }
         switch state {

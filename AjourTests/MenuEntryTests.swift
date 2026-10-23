@@ -14,7 +14,7 @@ struct MenuEntryTests {
         lastErrorIsNetwork: Bool = false,
         sections: MenuSections = MenuSections(timedUnpinned: [], pinned: []),
         pinnedLoaded: Bool = true,
-        activities: [Int: Ajour.AliasActivity] = [:],
+        changes: [Int: AliasChange] = [:],
         reducesMotion: Bool = false
     ) -> MenuState {
         MenuState(
@@ -22,7 +22,7 @@ struct MenuEntryTests {
             lastError: lastError,
             sections: sections,
             pinnedLoaded: pinnedLoaded,
-            activities: activities,
+            changes: changes,
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: reducesMotion,
             locale: german,
@@ -30,9 +30,9 @@ struct MenuEntryTests {
         )
     }
 
-    private func entry(for item: MenuAliasItem, pinned: Bool = false, activity: Ajour.AliasActivity? = nil) -> MenuEntry {
-        let activities = activity.map { [item.id: $0] } ?? [:]
-        return MenuEntry.alias(item, pinned: pinned, state: state(activities: activities))
+    private func entry(for item: MenuAliasItem, pinned: Bool = false, change: AliasChange? = nil) -> MenuEntry {
+        let changes = change.map { [item.id: $0] } ?? [:]
+        return MenuEntry.alias(item, pinned: pinned, state: state(changes: changes))
     }
 
     private func children(of entry: MenuEntry) -> [MenuEntry] {
@@ -256,9 +256,9 @@ struct MenuEntryTests {
         let row = try #require(row(of: entries[1]))
         #expect(row.id == 7)
         #expect(row.email == "shop@example.com")
-        #expect(row.status == AliasStatus.make(state: sections.pinned[0].state, activity: nil, locale: german, timeZone: berlin))
+        #expect(row.status == AliasStatus.make(state: sections.pinned[0].state, change: nil, locale: german, timeZone: berlin))
         #expect(row.accessibilityLabel == AliasStatus.accessibilityLabel(
-            email: "shop@example.com", pinned: true, state: sections.pinned[0].state, activity: nil, locale: german, timeZone: berlin
+            email: "shop@example.com", pinned: true, state: sections.pinned[0].state, change: nil, locale: german, timeZone: berlin
         ))
         #expect(row.accessibilityLabel.contains("pinned"))
     }
@@ -306,7 +306,7 @@ struct MenuEntryTests {
     }
 
     @Test func busyAliasDisablesChangesButNotCopy() throws {
-        let entry = entry(for: timedItem, activity: .enabling)
+        let entry = entry(for: timedItem, change: .enabling)
 
         #expect(try #require(row(of: entry)).status.line == "Enabling…")
         #expect(children(of: entry) == [
@@ -352,7 +352,7 @@ struct MenuEntryTests {
     }
 
     @Test func aBusyFailingAliasDisablesItsChanges() {
-        let entries = children(of: entry(for: failingItem, activity: .disabling))
+        let entries = children(of: entry(for: failingItem, change: .disabling))
 
         #expect(entries.dropFirst(2).allSatisfy { entry in
             switch entry {

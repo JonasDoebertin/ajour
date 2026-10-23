@@ -130,7 +130,7 @@ enum EmptyState: Equatable {
     func status(of alias: Alias) -> AliasStatus {
         AliasStatus.make(
             state: state(of: alias),
-            activity: appModel.activity(aliasID: alias.id),
+            change: appModel.change(aliasID: alias.id),
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
     }
@@ -140,7 +140,7 @@ enum EmptyState: Equatable {
             email: alias.email,
             pinned: alias.pinned,
             state: state(of: alias),
-            activity: appModel.activity(aliasID: alias.id)
+            change: appModel.change(aliasID: alias.id)
         )
     }
 

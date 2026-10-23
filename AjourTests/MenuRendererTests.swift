@@ -144,7 +144,7 @@ struct MenuRendererTests {
     @Test func busyAliasRowsUseTheOffColor() throws {
         let renderer = makeRenderer()
 
-        renderer.show([aliasEntry(status: .make(state: .enabled, activity: .disabling), children: [])])
+        renderer.show([aliasEntry(status: .make(state: .enabled, change: .disabling), children: [])])
 
         let item = try #require(menu.items.first)
         #expect(item.attributedTitle?.string == "shop@example.com\nDisabling…")
@@ -154,7 +154,7 @@ struct MenuRendererTests {
     @Test func rendersAliasRowsAsSubmenusTitledWithTheAddress() throws {
         let renderer = makeRenderer()
 
-        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Copy Address", .copy(email: "shop@example.com"))])])
+        renderer.show([aliasEntry(status: .make(state: .disabled, change: nil), children: [.action("Copy Address", .copy(email: "shop@example.com"))])])
 
         #expect(menu.items.first?.title.components(separatedBy: "\n").first == "shop@example.com")
         #expect(menu.items.first?.submenu?.items.map(\.title) == ["Copy Address"])
@@ -173,7 +173,7 @@ struct MenuRendererTests {
 
     @Test func movingTheHighlightRestoresThePreviousRow() throws {
         let renderer = makeRenderer()
-        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: []), aliasEntry(id: 8, email: "other@example.com", status: .make(state: .enabled, activity: nil), children: [])])
+        renderer.show([aliasEntry(status: travelStatus(words: "47:06 left"), children: []), aliasEntry(id: 8, email: "other@example.com", status: .make(state: .enabled, change: nil), children: [])])
         let first = menu.items[0]
         let second = menu.items[1]
 
@@ -215,7 +215,7 @@ struct MenuRendererTests {
         renderer.show([aliasEntry(status: status(remaining: 1), children: [.action("Disable Now", .disableNow(aliasID: 7))])])
         let item = try #require(menu.items.first)
 
-        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
+        renderer.show([aliasEntry(status: .make(state: .disabled, change: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
 
         #expect(menu.items.first !== item)
         #expect(menu.items.first?.attributedTitle?.string == "shop@example.com\nDisabled")
@@ -229,7 +229,7 @@ struct MenuRendererTests {
         renderer.highlight(item, in: menu)
         menu.pointsAtFirstItem = true
 
-        renderer.show([aliasEntry(status: .make(state: .disabled, activity: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
+        renderer.show([aliasEntry(status: .make(state: .disabled, change: nil), children: [.action("Enable for 5 Minutes", .enable(aliasID: 7, duration: .fiveMinutes))])])
 
         let rebuilt = try #require(menu.items.first)
         #expect(rebuilt !== item)
@@ -292,7 +292,7 @@ struct MenuRendererTests {
 }
 
 private func status(remaining: TimeInterval) -> AliasStatus {
-    .make(state: .timed(remaining: remaining, endsAt: Date(timeIntervalSince1970: 3600), length: 300), activity: nil)
+    .make(state: .timed(remaining: remaining, endsAt: Date(timeIntervalSince1970: 3600), length: 300), change: nil)
 }
 
 private func travelStatus(words: String) -> AliasStatus {

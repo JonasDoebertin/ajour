@@ -27,7 +27,7 @@ struct MenuState {
     var sections = MenuSections(timedUnpinned: [], pinned: [])
     /// False until the pinned list has loaded for the current key, so the menu doesn't call it empty before.
     var pinnedLoaded = false
-    var activities: [Int: AliasActivity] = [:]
+    var changes: [Int: AliasChange] = [:]
     var lastErrorIsNetwork = false
     var reducesMotion = false
     var locale: Locale = .current
@@ -195,13 +195,13 @@ indirect enum MenuEntry: Equatable {
     }
 
     static func alias(_ item: MenuAliasItem, pinned: Bool, state: MenuState) -> MenuEntry {
-        let activity = state.activities[item.id]
+        let change = state.changes[item.id]
         let row = MenuAliasRow(
             id: item.id,
             email: item.email,
             status: AliasStatus.make(
                 state: item.state,
-                activity: activity,
+                change: change,
                 reducesMotion: state.reducesMotion,
                 locale: state.locale,
                 timeZone: state.timeZone
@@ -210,13 +210,13 @@ indirect enum MenuEntry: Equatable {
                 email: item.email,
                 pinned: pinned,
                 state: item.state,
-                activity: activity,
+                change: change,
                 locale: state.locale,
                 timeZone: state.timeZone
             )
         )
         let copy = MenuEntry.action("Copy Address", .copy(email: item.email), symbol: "doc.on.doc")
-        return .alias(row, [copy, .separator] + changes(of: item, isEnabled: activity == nil))
+        return .alias(row, [copy, .separator] + changes(of: item, isEnabled: change == nil))
     }
 
     private static func changes(of item: MenuAliasItem, isEnabled: Bool) -> [MenuEntry] {
