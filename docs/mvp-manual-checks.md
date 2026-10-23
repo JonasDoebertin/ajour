@@ -74,3 +74,16 @@ With a real account, from the menu bar: All Aliases…
 6. "Enable Permanently" on a disabled alias shows "Enabled", with no timer in the menu. "Disable" shows "Disabled". Both should match the SimpleLogin web app.
 7. "Copy Address" puts the email on the clipboard.
 8. Optional: with the network off, an action shows its error at the bottom of the window and at the top of the menu as an entry with the `wifi.slash` symbol in the danger color, the title "Could not reach SimpleLogin.", and the detail line "Check your network connection."
+
+## Accessibility
+
+Turn the settings on yourself for these checks and back off afterwards. The phrases below are what the accessibility tree carries; VoiceOver adds the role ("menu item", "text", "button") and may pause at line breaks. Anything marked "Listen for" couldn't be settled from the tree alone.
+
+### VoiceOver
+
+1. Menu alias rows: open the menu and move with the arrow keys. A pinned alias with a timer reads "travel@alexmorgan.example, pinned, enabled, 47 minutes left, turns off at 14:54" once. A pinned disabled one reads "online-shops@alexmorgan.example, pinned, disabled". Listen for: the visible "47:06 left · off at 14:54" line or the address being read a second time.
+2. Menu notices: signed out, the first item reads "Not set up" and then "Add a SimpleLogin API key to manage your aliases." With no pinned aliases, it reads "No pinned aliases yet" and then "Open All Aliases, right-click an alias and choose Pin to keep it here." With Wi-Fi off after an action, it reads "Could not reach SimpleLogin. Check your network connection." A long error reads in full, also where the menu shortens it with "…". Listen for: the arrow keys landing on each notice (the keyboard skips them without VoiceOver), and the detail line being read, not just the title.
+3. All Aliases: each row reads as one line, for example "travel@alexmorgan.example, pinned, enabled, 47 minutes left, turns off at 10:27, Flights, trains and hotels", with the note last. VO-Shift-M on a row opens its context menu (Unpin, Copy Address, Keep Enabled, Extend, Disable). Listen for: VO-Shift-M opening the menu, and the right arrow opening Extend's durations.
+4. New Alias: the first field reads "Prefix", then the "Suffix" and "Disable after" pop-up buttons with their values. Enter "shop" and choose 1 Hour: the preview reads "shop@alexmorgan.example" and then "off after 1 hour", each once.
+5. Settings: the account rows read "Name, Alex Morgan" and "Email, alex@example.com" as text, once each. Listen for: the value being read again on its own.
+6. Onboarding: the progress dots read "Step 1 of 4" through "Step 4 of 4". The key field reads "API Key".
