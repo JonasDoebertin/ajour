@@ -45,16 +45,18 @@ struct MenuRendererTests {
         #expect(try #require(menu.items[1].image).isTemplate)
     }
 
-    @Test func noticesShowTitleDetailAndSymbol() throws {
+    @Test func noticesUseAFullContrastViewThatCannotBeChosen() throws {
         let renderer = makeRenderer()
 
         renderer.show([.notice(title: "Not set up", detail: "Add a SimpleLogin API key to manage your aliases.", symbol: "key")])
 
         let item = try #require(menu.items.first)
-        #expect(item.attributedTitle?.string == "Not set up\nAdd a SimpleLogin API key to manage your aliases.")
-        #expect(foregroundColor(ofLine: 0, in: item) == .labelColor)
-        #expect(foregroundColor(ofLine: 1, in: item) == .secondaryLabelColor)
-        #expect(item.image != nil)
+        let view = try noticeView(of: item)
+        #expect(view.title == "Not set up")
+        #expect(view.detail == "Add a SimpleLogin API key to manage your aliases.")
+        #expect(view.titleColor == .labelColor)
+        #expect(view.detailColor == .secondaryLabelColor)
+        #expect(view.symbolImage != nil)
         #expect(item.isEnabled == false)
     }
 
@@ -66,11 +68,15 @@ struct MenuRendererTests {
             .notice(title: "No pinned aliases yet", detail: nil, symbol: "pin"),
         ])
 
-        let danger = try #require(menu.items[0].image)
+        let danger = try #require(try noticeView(of: menu.items[0]).symbolImage)
         #expect(!danger.isTemplate)
         let colors = try opaqueColors(of: danger)
         #expect(!colors.isEmpty && colors.allSatisfy { $0.isClose(to: Palette.danger) })
-        #expect(try #require(menu.items[1].image).isTemplate)
+        let plain = try #require(try noticeView(of: menu.items[1]).symbolImage)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let plainColors = try visibleColors(of: plain, in: appearance)
+            #expect(!plainColors.isEmpty && plainColors.allSatisfy { $0.isClose(to: .labelColor, in: appearance) })
+        }
     }
 
     @Test func aHighlightedDangerActionDrawsItsSymbolWhite() throws {
@@ -99,9 +105,26 @@ struct MenuRendererTests {
             fullText: message
         )])
 
-        let item = try #require(menu.items.first)
-        #expect(item.toolTip == message)
-        #expect(item.accessibilityLabel() == message)
+        let view = try noticeView(of: try #require(menu.items.first))
+        #expect(view.toolTip == message)
+        #expect(view.accessibilityLabel() == message)
+    }
+
+    @Test func aNoticeWithoutFullTextSpeaksTitleAndDetail() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([.notice(
+            title: "No pinned aliases yet",
+            detail: "Open All Aliases, right-click an alias and choose Pin to keep it here.",
+            symbol: "pin"
+        )])
+
+        let view = try noticeView(of: try #require(menu.items.first))
+        let spoken = "No pinned aliases yet\nOpen All Aliases, right-click an alias and choose Pin to keep it here."
+        #expect(view.accessibilityLabel() == spoken)
+        #expect(view.toolTip == spoken)
+        #expect(view.isAccessibilityElement() == true)
+        #expect(view.accessibilityRole() == .staticText)
     }
 
     @Test func aNoticeUpdatedInPlaceDropsTheFullTextItNoLongerHas() throws {
@@ -111,21 +134,72 @@ struct MenuRendererTests {
 
         renderer.show([.notice(title: "Not set up", detail: nil, symbol: "key")])
 
+        let view = try noticeView(of: item)
         #expect(menu.items.first === item)
-        #expect(item.toolTip == nil)
-        #expect(item.accessibilityLabel() != "Offline for now.")
+        #expect(view.toolTip == "Not set up")
+        #expect(view.accessibilityLabel() == "Not set up")
     }
 
     @Test func aChangedNoticeUpdatesTheSameItem() throws {
         let renderer = makeRenderer()
         renderer.show([.notice(title: "Offline", detail: nil, symbol: "wifi.slash"), .action("Quit", .quit)])
         let item = try #require(menu.items.first)
+        let viewBefore = try noticeView(of: item)
 
         renderer.show([.notice(title: "Could not reach SimpleLogin.", detail: "Check your network connection.", symbol: "exclamationmark.triangle"), .action("Quit", .quit)])
 
+        let view = try noticeView(of: item)
         #expect(menu.items.first === item)
-        #expect(item.attributedTitle?.string == "Could not reach SimpleLogin.\nCheck your network connection.")
-        #expect(item.image?.accessibilityDescription == NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?.accessibilityDescription)
+        #expect(item.view === viewBefore)
+        #expect(view.title == "Could not reach SimpleLogin.")
+        #expect(view.detail == "Check your network connection.")
+        #expect(view.symbolImage?.accessibilityDescription == NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?.accessibilityDescription)
+    }
+
+    @Test func aLongDetailWrapsInsteadOfWideningTheMenu() throws {
+        let longDetail = String(repeating: "Lorem ipsum dolor sit amet ", count: 8).prefix(200)
+        let long = try shownNoticeView(detail: String(longDetail))
+        let short = try shownNoticeView(detail: "Lorem")
+
+        #expect(long.frame.width <= long.maximumWidth)
+        #expect(long.frame.height > short.frame.height)
+    }
+
+    @Test func aLongWordWrapsInsideTheNotice() throws {
+        let long = try shownNoticeView(detail: String(repeating: "x", count: 200))
+        let short = try shownNoticeView(detail: "x")
+
+        #expect(long.frame.width <= long.maximumWidth)
+        #expect(long.frame.height > short.frame.height)
+    }
+
+    @Test func aNoticeShrinksWhenItsDetailGetsShorter() throws {
+        let renderer = makeRenderer()
+        renderer.show([.notice(title: "Offline", detail: String(repeating: "Lorem ipsum ", count: 16), symbol: "wifi.slash")])
+        let view = try noticeView(of: try #require(menu.items.first))
+        let longHeight = view.frame.height
+
+        renderer.show([.notice(title: "Offline", detail: "Lorem ipsum", symbol: "wifi.slash")])
+
+        #expect(try noticeView(of: try #require(menu.items.first)) === view)
+        #expect(view.frame.height < longHeight)
+    }
+
+    @Test func aNoticeIsNeverHighlighted() throws {
+        let renderer = makeRenderer()
+        let notice = MenuEntry.notice(title: "Timer data unreadable", detail: nil, symbol: "exclamationmark.triangle", tone: .danger)
+        renderer.show([notice, aliasEntry(status: travelStatus(words: "47:06 left"), children: [])])
+        let item = try #require(menu.items.first)
+
+        renderer.highlight(item, in: menu)
+        renderer.show([notice, aliasEntry(status: travelStatus(words: "47:05 left"), children: [])])
+
+        let view = try noticeView(of: item)
+        #expect(menu.items.first === item)
+        #expect(view.titleColor == .labelColor)
+        #expect(view.detailColor == .secondaryLabelColor)
+        let colors = try opaqueColors(of: try #require(view.symbolImage))
+        #expect(!colors.isEmpty && colors.allSatisfy { $0.isClose(to: Palette.danger) })
     }
 
     @Test func aliasRowShowsAddressAndStatusLines() throws {
@@ -291,6 +365,16 @@ struct MenuRendererTests {
     }
 }
 
+@MainActor private func noticeView(of item: NSMenuItem) throws -> MenuNoticeView {
+    try #require(item.view as? MenuNoticeView)
+}
+
+@MainActor private func shownNoticeView(detail: String) throws -> MenuNoticeView {
+    let menu = NSMenu()
+    MenuRenderer(menu: menu) { _ in }.show([.notice(title: "Offline", detail: detail, symbol: "wifi.slash")])
+    return try noticeView(of: try #require(menu.items.first))
+}
+
 private func status(remaining: TimeInterval) -> AliasStatus {
     .make(state: .timed(remaining: remaining, endsAt: Date(timeIntervalSince1970: 3600), length: 300), change: nil)
 }
@@ -334,25 +418,33 @@ private final class PointedMenu: NSMenu {
 
 /// The colors of the fully opaque pixels of `image`, drawn in the light appearance.
 @MainActor private func opaqueColors(of image: NSImage) throws -> [NSColor] {
+    try colors(of: image, in: .aqua).filter { $0.alphaComponent == 1 }
+}
+
+/// The colors of the pixels of `image` that are more opaque than transparent, so translucent label colors count too.
+@MainActor private func visibleColors(of image: NSImage, in appearance: NSAppearance.Name) throws -> [NSColor] {
+    try colors(of: image, in: appearance).filter { $0.alphaComponent > 0.5 }
+}
+
+@MainActor private func colors(of image: NSImage, in appearance: NSAppearance.Name) throws -> [NSColor] {
     let bitmap = try #require(NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: 32, pixelsHigh: 32, bitsPerSample: 8, samplesPerPixel: 4,
         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
     ))
     let context = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
-    NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+    NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
         image.draw(in: NSRect(x: 0, y: 0, width: 32, height: 32))
         NSGraphicsContext.restoreGraphicsState()
     }
     return (0..<32).flatMap { x in (0..<32).compactMap { y in bitmap.colorAt(x: x, y: y) } }
-        .filter { $0.alphaComponent == 1 }
 }
 
 private extension NSColor {
-    @MainActor func isClose(to other: NSColor) -> Bool {
+    @MainActor func isClose(to other: NSColor, in appearance: NSAppearance.Name = .aqua) -> Bool {
         var resolved: NSColor?
-        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
             resolved = other.usingColorSpace(.deviceRGB)
         }
         guard let mine = usingColorSpace(.deviceRGB), let resolved else { return false }
