@@ -77,7 +77,7 @@ struct MenuEntryTests {
 
         #expect(entries == [
             .notice(
-                title: String(repeating: "a", count: 79) + "…",
+                title: String(repeating: "a", count: 81),
                 detail: nil,
                 symbol: "exclamationmark.triangle",
                 tone: .danger,
@@ -104,14 +104,14 @@ struct MenuEntryTests {
         ))
     }
 
-    @Test func aLongErrorDetailIsShortenedToEightyCharacters() {
-        let message = "Something failed. " + String(repeating: "b", count: 81)
+    @Test func aLongErrorDetailIsShortenedToTheMaximumLength() {
+        let message = "Something failed. " + String(repeating: "b", count: 161)
 
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
         #expect(entries.first == .notice(
             title: "Something failed.",
-            detail: String(repeating: "b", count: 79) + "…",
+            detail: String(repeating: "b", count: 159) + "…",
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
@@ -119,42 +119,31 @@ struct MenuEntryTests {
     }
 
     @Test(arguments: [
-        (
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled.",
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and has been",
-            "disabled."
-        ),
-        (
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and could not be disabled.",
-            "shop-blue-7421@simplelogin.com was enabled for the previous account and could",
-            "not be disabled."
-        ),
-        (
-            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was started.",
-            "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was",
-            "started."
-        ),
+        "shop-blue-7421@simplelogin.com was enabled for the previous account and has been disabled.",
+        "shop-blue-7421@simplelogin.com was enabled for the previous account and could not be disabled.",
+        "shop-blue-7421@simplelogin.com belongs to the previous account, so no timer was started.",
     ])
-    func aLongSentenceContinuesOnTheDetailLine(message: String, title: String, detail: String) {
+    func aLongSingleSentenceStaysTheTitle(message: String) {
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
         #expect(entries.first == .notice(
-            title: title,
-            detail: detail,
+            title: message,
+            detail: nil,
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message
         ))
     }
 
-    @Test func theContinuationOfALongSentenceIsShortenedToEightyCharacters() {
-        let message = String(repeating: "word ", count: 40) + "end."
+    @Test func aVeryLongMessageIsShortenedToTheMaximumLengthButKeptInFull() {
+        let message = String(repeating: "word ", count: 39) + "done."
 
         let entries = MenuEntry.entries(for: state(phase: .loading, lastError: message))
 
+        #expect(message.count == 200)
         #expect(entries.first == .notice(
-            title: String(repeating: "word ", count: 16).trimmingCharacters(in: .whitespaces),
-            detail: String(String(repeating: "word ", count: 24).prefix(79)) + "…",
+            title: String(message.prefix(159)) + "…",
+            detail: nil,
             symbol: "exclamationmark.triangle",
             tone: .danger,
             fullText: message

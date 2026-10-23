@@ -118,28 +118,19 @@ indirect enum MenuEntry: Equatable {
         return problems
     }
 
-    private static let lineLength = 80
+    private static let maximumMessageLength = 160
 
-    /// A long server message would stretch the whole menu.
+    /// The notice wraps a long message, but a very long server message would still make the menu tall.
     private static func truncated(_ text: String) -> String {
-        guard text.count > lineLength else { return text }
-        return text.prefix(lineLength - 1) + "…"
-    }
-
-    /// A long single sentence breaks between words and continues on the detail line, so the words that say
-    /// what happened, which often follow an alias address, stay visible.
-    private static func lines(of problem: ProblemMessage) -> (title: String, detail: String?) {
-        guard problem.detail == nil, problem.title.count > lineLength,
-              let lastSpace = problem.title.prefix(lineLength + 1).lastIndex(of: " ")
-        else { return (problem.title, problem.detail) }
-        return (String(problem.title[..<lastSpace]), String(problem.title[problem.title.index(after: lastSpace)...]))
+        guard text.count > maximumMessageLength else { return text }
+        return text.prefix(maximumMessageLength - 1) + "…"
     }
 
     private static func errorNotice(for message: String, isNetwork: Bool) -> MenuEntry {
-        let (title, detail) = lines(of: ProblemMessage(message))
+        let problem = ProblemMessage(message)
         return .notice(
-            title: truncated(title),
-            detail: detail.map(truncated),
+            title: truncated(problem.title),
+            detail: problem.detail.map(truncated),
             symbol: isNetwork ? "wifi.slash" : "exclamationmark.triangle",
             tone: .danger,
             fullText: message
