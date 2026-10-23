@@ -1,7 +1,7 @@
 import Foundation
 
 /// Why an expiry disable failed, in terms of what the person can do about it.
-public enum DisableProblem: Equatable, Sendable {
+public enum DisableProblem: Hashable, Sendable {
     case unreachable
     case notResponding(status: Int)
     case keyRejected

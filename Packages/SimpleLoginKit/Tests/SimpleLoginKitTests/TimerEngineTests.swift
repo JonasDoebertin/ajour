@@ -654,7 +654,7 @@ final class TestClock: @unchecked Sendable {
         _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
         let gated = GatedAliasAPI(base: api)
         engine.api = gated
-        api.errors = [APIError.unauthorized, APIError.unauthorized]
+        api.errorsByAliasID = [1: [APIError.unauthorized], 2: [APIError.unauthorized]]
         clock.advance(by: 300)
 
         async let first = engine.processDue()
@@ -823,7 +823,7 @@ final class TestClock: @unchecked Sendable {
         let engine = makeEngine()
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
-        api.errors = [forbidden]
+        api.errorsByAliasID = [1: [forbidden]]
         clock.advance(by: 300)
 
         let events = await engine.processDue()
@@ -985,7 +985,7 @@ final class TestClock: @unchecked Sendable {
 
     @Test func aRejectedKeyStopsThePassWhileAnotherAliasWaitsForItsDisable() async throws {
         let (engine, gated) = try await makeEngineWithTwoTimers(holding: [1])
-        api.errors = [APIError.unauthorized]
+        api.errorsByAliasID = [2: [APIError.unauthorized]]
         clock.advance(by: 300)
 
         async let events = engine.processDue()
@@ -998,6 +998,98 @@ final class TestClock: @unchecked Sendable {
         #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
         #expect(engine.records.count == 2)
         #expect(api.aliases[1]?.enabled == true)
+    }
+
+    /// Alias 2's disable is held by a first pass while a second pass for alias 1 meets a rejected key.
+    /// Alias 2's disable then ends with `error`. Returns the events of the first pass.
+    private func eventsOfAPassWhoseDisableEndsAfterTheKeyBecameInvalid(
+        endingWith error: APIError
+    ) async throws -> (engine: TimerEngine, events: [TimerEvent]) {
+        let engine = makeEngine()
+        _ = try await engine.enable(aliasID: 1, for: .oneHour)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        let gated = GatedAliasAPI(base: api, holding: [2])
+        engine.api = gated
+        clock.advance(by: 300)
+        async let eventsOfFirstPass = engine.processDue()
+        await gated.waitUntilHolding(1)
+
+        api.errors = [APIError.unauthorized]
+        clock.advance(by: 3300)
+        #expect(await engine.processDue() == [.unauthorized])
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+
+        api.errors = [error]
+        gated.open()
+        return (engine, await eventsOfFirstPass)
+    }
+
+    @Test func aTransientFailureEndingAfterTheKeyBecameInvalidKeepsTheInvalidState() async throws {
+        let (engine, events) = try await eventsOfAPassWhoseDisableEndsAfterTheKeyBecameInvalid(
+            endingWith: .transport("offline")
+        )
+
+        #expect(events.isEmpty)
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+    }
+
+    @Test func aRefusalEndingAfterTheKeyBecameInvalidKeepsTheInvalidState() async throws {
+        let (engine, events) = try await eventsOfAPassWhoseDisableEndsAfterTheKeyBecameInvalid(endingWith: forbidden)
+
+        #expect(events.isEmpty)
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+        #expect(engine.record(for: 2)?.refusalReportedAt == nil)
+    }
+
+    @Test func theKeyBecomingInvalidStopsRetryNotifications() async throws {
+        let engine = makeEngine()
+        api.aliases[3] = .fixture(id: 3, email: "three@example.com")
+        _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 2, for: .fiveMinutes)
+        _ = try await engine.enable(aliasID: 3, for: .oneHour)
+        api.errorsByAliasID = [1: [APIError.transport("offline")], 2: [APIError.transport("offline")]]
+        clock.advance(by: 300)
+        _ = await engine.processDue()
+        let log = recordingStoppedRetries(of: engine)
+        api.errorsByAliasID = [1: [APIError.unauthorized], 2: [APIError.unauthorized]]
+        clock.advance(by: 5)
+
+        #expect(await engine.processDue() == [.unauthorized])
+
+        #expect(log.aliasIDs == [1, 2])
+    }
+
+    @Test func aFailingDisableIsNotReportedWhenTheKeyBecomesInvalidLaterInThePass() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [2])
+        api.errorsByAliasID = [1: [APIError.transport("offline")], 2: [APIError.unauthorized]]
+        clock.advance(by: 300)
+
+        async let events = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.failures[1] != nil }
+        gated.open()
+
+        #expect(await events == [.unauthorized])
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
+    }
+
+    @Test func aFailingDisableIsNotReportedWhenAnotherPassFindsTheKeyInvalid() async throws {
+        let (engine, gated) = try await makeEngineWithTwoTimers(holding: [2])
+        api.errorsByAliasID = [
+            1: [APIError.transport("offline"), APIError.unauthorized],
+            2: [APIError.unauthorized],
+        ]
+        clock.advance(by: 300)
+        async let eventsOfFirstPass = engine.processDue()
+        await gated.waitUntilHolding(1)
+        await waitUntil { engine.failures[1] != nil }
+
+        clock.advance(by: 5)
+        #expect(await engine.processDue() == [.unauthorized])
+        gated.open()
+
+        #expect(await eventsOfFirstPass.isEmpty)
+        #expect(engine.failures == [1: .unauthorized, 2: .unauthorized])
     }
 
     @Test func anAliasWhoseDisableRunsIsNotDue() async throws {
@@ -1169,7 +1261,7 @@ final class TestClock: @unchecked Sendable {
         let engine = makeEngine()
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         _ = try await engine.enable(aliasID: 2, for: .oneHour)
-        api.errors = [APIError.transport("offline")]
+        api.errorsByAliasID = [1: [APIError.transport("offline")]]
 
         let outcome = await engine.disableAll(within: .seconds(5))
 
@@ -1260,7 +1352,7 @@ final class TestClock: @unchecked Sendable {
         let engine = makeEngine()
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         _ = try await engine.enable(aliasID: 2, for: .oneHour)
-        api.errors = [APIError.server(status: 503, message: nil), APIError.server(status: 503, message: nil)]
+        api.errorsByAliasID = [1: [APIError.server(status: 503, message: nil)], 2: [APIError.server(status: 503, message: nil)]]
 
         #expect(await engine.disableAll(within: .seconds(5)) == .stillEnabled([
             1: .notResponding(status: 503),
@@ -1357,12 +1449,31 @@ final class TestClock: @unchecked Sendable {
         engine.api = nil
         gated.open()
 
-        await #expect(throws: TimerEngineError.accountChanged) {
+        await #expect(throws: TimerEngineError.accountChanged(email: "one@example.com", disabledAgain: true)) {
             try await enabling.value
         }
         #expect(engine.records.isEmpty)
         #expect(store.records.isEmpty)
         #expect(api.aliases[1]?.enabled == false)
+    }
+
+    @Test func anEnableWhoseAliasCannotBeDisabledAgainSaysSo() async throws {
+        api.aliases[1] = .fixture(id: 1, email: "one@example.com", enabled: true)
+        api.toggleErrors = [APIError.transport("offline")]
+        let engine = makeEngine()
+        let gated = GatedAliasAPI(base: api)
+        engine.api = gated
+
+        let enabling = Task { try await engine.enable(aliasID: 1, for: .fiveMinutes) }
+        await gated.waitUntilHolding(1)
+        engine.api = nil
+        gated.open()
+
+        await #expect(throws: TimerEngineError.accountChanged(email: "one@example.com", disabledAgain: false)) {
+            try await enabling.value
+        }
+        #expect(engine.records.isEmpty)
+        #expect(api.aliases[1]?.enabled == true)
     }
 
     // MARK: - Reporting each disabled alias
@@ -1400,12 +1511,11 @@ final class TestClock: @unchecked Sendable {
         let log = recordingDisabledAliases(of: engine)
         _ = try await engine.enable(aliasID: 1, for: .fiveMinutes)
         _ = try await engine.enable(aliasID: 2, for: .oneHour)
-        api.errors = [APIError.transport("offline")]
+        api.errorsByAliasID = [1: [APIError.transport("offline")]]
 
         _ = await engine.disableAll(within: .seconds(5))
 
-        #expect(log.aliasIDs.count == 1)
-        #expect(log.aliasIDs.first.map { engine.record(for: $0) == nil } == true)
+        #expect(log.aliasIDs == [2])
     }
 
     @Test func aJoinedDisableIsReportedOnce() async throws {

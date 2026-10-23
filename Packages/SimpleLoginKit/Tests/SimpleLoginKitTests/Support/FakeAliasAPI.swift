@@ -5,6 +5,7 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     private let lock = NSLock()
     private var storedAliases: [Int: Alias]
     private var storedErrors: [Error] = []
+    private var storedErrorsByAliasID: [Int: [Error]] = [:]
     private var storedToggleErrors: [Error] = []
     private var storedToggleErrorsAfterApplying: [Error] = []
     private var storedToggleCalls: [Int] = []
@@ -22,6 +23,13 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     var errors: [Error] {
         get { lock.withLock { storedErrors } }
         set { lock.withLock { storedErrors = newValue } }
+    }
+
+    /// Thrown by requests for one alias before any of `errors`, so parallel requests for several aliases
+    /// each meet their own error.
+    var errorsByAliasID: [Int: [Error]] {
+        get { lock.withLock { storedErrorsByAliasID } }
+        set { lock.withLock { storedErrorsByAliasID = newValue } }
     }
 
     /// Thrown by `toggle` before it flips the alias, like a request that never arrived.
@@ -47,7 +55,7 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
     func alias(id: Int) async throws -> Alias {
         try lock.withLock {
             storedAliasCalls.append(id)
-            try popError()
+            try popError(aliasID: id)
             guard let alias = storedAliases[id] else {
                 throw APIError.server(status: 404, message: "Alias not found")
             }
@@ -57,7 +65,7 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
 
     func toggle(aliasID: Int) async throws -> Bool {
         try lock.withLock {
-            try popError()
+            try popError(aliasID: aliasID)
             if !storedToggleErrors.isEmpty {
                 throw storedToggleErrors.removeFirst()
             }
@@ -85,7 +93,11 @@ final class FakeAliasAPI: AliasAPI, @unchecked Sendable {
         }
     }
 
-    private func popError() throws {
+    private func popError(aliasID: Int) throws {
+        if let error = storedErrorsByAliasID[aliasID]?.first {
+            storedErrorsByAliasID[aliasID]?.removeFirst()
+            throw error
+        }
         if !storedErrors.isEmpty {
             throw storedErrors.removeFirst()
         }

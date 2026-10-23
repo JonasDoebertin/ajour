@@ -50,7 +50,8 @@ enum MenuTone: Equatable {
 /// Describes the status item menu as data, so it can be tested and compared with what is on screen.
 indirect enum MenuEntry: Equatable {
     case header(String)
-    case notice(title: String, detail: String?, symbol: String, tone: MenuTone = .plain)
+    /// `fullText` is the whole message when the title and detail may shorten it.
+    case notice(title: String, detail: String?, symbol: String, tone: MenuTone = .plain, fullText: String? = nil)
     case action(String, MenuAction, symbol: String? = nil, shortcut: String = "", isEnabled: Bool = true, tone: MenuTone = .plain)
     case submenu(String, [MenuEntry], symbol: String? = nil, isEnabled: Bool = true)
     case alias(MenuAliasRow, [MenuEntry])
@@ -58,7 +59,7 @@ indirect enum MenuEntry: Equatable {
 
     var title: String? {
         switch self {
-        case .header(let title), .notice(let title, _, _, _), .action(let title, _, _, _, _, _), .submenu(let title, _, _, _): title
+        case .header(let title), .notice(let title, _, _, _, _), .action(let title, _, _, _, _, _), .submenu(let title, _, _, _): title
         case .alias(let row, _): row.email
         case .separator: nil
         }
@@ -125,13 +126,23 @@ indirect enum MenuEntry: Equatable {
         return text.prefix(lineLength - 1) + "…"
     }
 
+    /// A long single sentence breaks between words and continues on the detail line, so the words that say
+    /// what happened, which often follow an alias address, stay visible.
+    private static func lines(of problem: ProblemMessage) -> (title: String, detail: String?) {
+        guard problem.detail == nil, problem.title.count > lineLength,
+              let lastSpace = problem.title.prefix(lineLength + 1).lastIndex(of: " ")
+        else { return (problem.title, problem.detail) }
+        return (String(problem.title[..<lastSpace]), String(problem.title[problem.title.index(after: lastSpace)...]))
+    }
+
     private static func errorNotice(for message: String, isNetwork: Bool) -> MenuEntry {
-        let problem = ProblemMessage(message)
+        let (title, detail) = lines(of: ProblemMessage(message))
         return .notice(
-            title: truncated(problem.title),
-            detail: problem.detail.map(truncated),
+            title: truncated(title),
+            detail: detail.map(truncated),
             symbol: isNetwork ? "wifi.slash" : "exclamationmark.triangle",
-            tone: .danger
+            tone: .danger,
+            fullText: message
         )
     }
 

@@ -20,8 +20,9 @@ public enum TimerEngineError: Error, Equatable {
     case storeUnavailable
     case disableInProgress
     case noTimer
-    /// The key changed while an alias was being enabled, so the alias was switched off again instead of timed.
-    case accountChanged
+    /// The key changed while an alias was being enabled, so no timer started. The alias was switched off
+    /// again unless `disabledAgain` is false, in which case it may still be enabled.
+    case accountChanged(email: String, disabledAgain: Bool)
 }
 
 public enum DisableAllOutcome: Equatable, Sendable {
@@ -41,7 +42,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
     /// Called once per successful disable, as soon as it succeeds, whether it came from expiry, `disableNow`, or `disableAll`.
     @ObservationIgnored public var onAliasDisabled: (@MainActor (Int) -> Void)?
     /// Called once a failed disable stops being retried while the alias stays enabled: its timer was extended
-    /// or kept enabled, or SimpleLogin refused the disable.
+    /// or kept enabled, SimpleLogin refused the disable, or the key became invalid.
     @ObservationIgnored public var onDisableRetriesStopped: (@MainActor (Int) -> Void)?
     /// Failures that happen before this date are not reported, and the first one after it is, so a failure
     /// caused by the Mac having just woken up or reconnected does not alarm anyone.
@@ -96,8 +97,8 @@ public enum DisableAllOutcome: Equatable, Sendable {
         let generation = keyGeneration
         let alias = try await aliasSwitch.ensureEnabled(aliasID: aliasID)
         guard generation == keyGeneration else {
-            _ = try? await aliasSwitch.ensureDisabled(aliasID: aliasID)
-            throw TimerEngineError.accountChanged
+            let disabledAgain = (try? await aliasSwitch.ensureDisabled(aliasID: aliasID)) != nil
+            throw TimerEngineError.accountChanged(email: alias.email, disabledAgain: disabledAgain)
         }
         return try startTimer(for: alias, duration: duration)
     }
@@ -152,7 +153,8 @@ public enum DisableAllOutcome: Equatable, Sendable {
 
     /// Disables every alias whose timer is due, all at once, so a slow disable never holds back another one.
     /// Events come in the order of the timers. A rejected key ends the pass: the attempts still running
-    /// are cancelled, and only the rejection is reported from then on.
+    /// are cancelled, and only the rejection is reported from then on. A failing disable is not reported
+    /// when it stopped being retried before the pass ended, for example because the key became invalid.
     public func processDue() async -> [TimerEvent] {
         guard api != nil else { return [] }
         let attempts = records.filter(isDue).map { record in
@@ -187,7 +189,7 @@ public enum DisableAllOutcome: Equatable, Sendable {
                 }
             }
         }
-        let events = attempts.compactMap { eventsByAliasID[$0.aliasID] }
+        let events = attempts.compactMap { eventsByAliasID[$0.aliasID] }.filter(isStillRetried)
         return keyBecameInvalid ? events + [.unauthorized] : events
     }
 
@@ -401,19 +403,27 @@ public enum DisableAllOutcome: Equatable, Sendable {
         }
     }
 
+    private func isStillRetried(_ event: TimerEvent) -> Bool {
+        guard case .disableKeepsFailing(let aliasID, _, _) = event else { return true }
+        guard case .transient = failures[aliasID] else { return false }
+        return true
+    }
+
     /// Returns whether the key just became invalid, as opposed to already being known as invalid.
+    /// Retries that were running stop, because no retry can succeed with an invalid key.
     private func markAllUnauthorized() -> Bool {
         let wasAlreadyUnauthorized = failures.values.contains(.unauthorized)
         for record in records {
+            stopRetryingDisable(aliasID: record.aliasID)
             failures[record.aliasID] = .unauthorized
         }
         return !wasAlreadyUnauthorized
     }
 
     /// Returns whether the refusal should be reported: once per timer, however often the key changes.
-    /// Returns false as well when the alias is no longer timed.
+    /// Returns false as well when the alias is no longer timed or the key is already known as invalid.
     private func markForbidden(aliasID: Int) -> Bool {
-        guard let index = recordIndex(for: aliasID) else { return false }
+        guard let index = recordIndex(for: aliasID), failures[aliasID] != .unauthorized else { return false }
         stopRetryingDisable(aliasID: aliasID)
         failures[aliasID] = .forbidden
         guard records[index].refusalReportedAt == nil else { return false }
@@ -424,10 +434,11 @@ public enum DisableAllOutcome: Equatable, Sendable {
 
     /// Returns the problem to report when this failure is the first of its run and reporting is not paused;
     /// a run is reported once. A record extended while the attempt was running is no longer due,
-    /// so its failure is discarded.
+    /// so its failure is discarded, and so is a failure that ends after the key became invalid.
     private func registerTransientFailure(aliasID: Int, error: any Error) -> DisableProblem? {
         let failedAt = now()
-        guard let record = record(for: aliasID), record.expiresAt <= failedAt else { return nil }
+        guard let record = record(for: aliasID), record.expiresAt <= failedAt, failures[aliasID] != .unauthorized
+        else { return nil }
         let problem = DisableProblem(error: error)
         var attempts = 1
         var reported = false

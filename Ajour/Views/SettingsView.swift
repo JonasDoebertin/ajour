@@ -19,24 +19,21 @@ struct SettingsView: View {
         .onAppear { settings.refreshLaunchAtLogin() }
         .task { await settings.refreshAccount() }
         .alert("Sign Out of Ajour?", isPresented: $confirmsSignOut) {
-            Button("Sign Out", role: .destructive) {
+            // Not marked destructive: an alert takes Return away from a destructive button.
+            Button("Sign Out") {
                 Task { await settings.signOut() }
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Ajour disables aliases with a running timer, then removes the API key from this Mac.")
         }
-        .alert(settings.blockedSignOut?.title ?? "", isPresented: Binding(
-            get: { settings.blockedSignOut != nil },
-            set: { if !$0 { settings.blockedSignOut = nil } }
-        ), presenting: settings.blockedSignOut) { _ in
-            Button("Sign Out Anyway", role: .destructive) {
-                Task { await settings.signOutAnyway() }
+        .sheet(item: Bindable(settings).blockedSignOut) { error in
+            StillEnabledAlert(error: error) {
+                settings.signOutAnyway()
+            } cancel: {
+                settings.blockedSignOut = nil
             }
-            Button("Cancel", role: .cancel) {}
-                .keyboardShortcut(.defaultAction)
-        } message: { error in
-            Text(error.userMessage)
         }
         .alert("Could Not Sign Out", isPresented: Binding(
             get: { settings.signOutError != nil },

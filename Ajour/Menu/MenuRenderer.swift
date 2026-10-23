@@ -99,9 +99,11 @@ import AppKit
     private func showContent(of entry: MenuEntry, in item: NSMenuItem) {
         let isHighlighted = highlightedItems.values.contains { $0 === item }
         switch entry {
-        case let .notice(title, detail, symbol, tone):
+        case let .notice(title, detail, symbol, tone, fullText):
             item.attributedTitle = Self.noticeTitle(title, detail: detail)
             item.image = Self.symbolImage(symbol, tone: tone)
+            item.toolTip = fullText
+            item.setAccessibilityLabel(fullText)
         case let .alias(row, _):
             item.attributedTitle = Self.aliasTitle(row, isHighlighted: isHighlighted)
             item.image = StateSymbol.image(for: row.status.kind, highlighted: isHighlighted)

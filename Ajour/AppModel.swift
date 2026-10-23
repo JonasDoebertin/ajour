@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SimpleLoginKit
 
-struct StillEnabledAlias: Equatable {
+struct StillEnabledAlias: Hashable {
     let email: String
     let problem: DisableProblem
 
@@ -17,17 +17,20 @@ struct StillEnabledAlias: Equatable {
     }
 }
 
-enum SignOutError: Error, Equatable {
+enum SignOutError: Error, Hashable, Identifiable {
     /// Aliases sorted by email, plus the number of enables and creations still running when sign-out gave up waiting.
     case aliasesStillEnabled([StillEnabledAlias], pendingEnables: Int)
     case timerDataUnreadable
+    case timersNotSaved
+
+    var id: Self { self }
 
     var title: String {
         switch self {
         case .aliasesStillEnabled(let aliases, let pendingEnables):
             let total = aliases.count + pendingEnables
             return total == 1 ? "An Alias Is Still Enabled" : "\(total) Aliases Are Still Enabled"
-        case .timerDataUnreadable:
+        case .timerDataUnreadable, .timersNotSaved:
             return "Could Not Sign Out"
         }
     }
@@ -44,6 +47,8 @@ enum SignOutError: Error, Equatable {
             return lines.joined(separator: "\n") + "\n\nIf you sign out anyway, \(consequence) enabled."
         case .timerDataUnreadable:
             return "Timer data is unreadable. Sign-out is blocked to avoid losing track of enabled aliases."
+        case .timersNotSaved:
+            return "The timer file could not be saved. Sign-out is blocked to avoid losing track of enabled aliases."
         }
     }
 }
@@ -59,6 +64,7 @@ enum AliasCreationError: Error, Equatable {
 enum AliasActionError: Error, Equatable {
     case alreadyDisabled(email: String)
     case timerAlreadyEnded(email: String)
+    case timerNotStartedForPreviousAccount(email: String)
 }
 
 @MainActor @Observable final class AppModel {
@@ -221,17 +227,24 @@ enum AliasActionError: Error, Equatable {
     /// Leaves aliases that stay enabled as they are: their timers are forgotten, because without the key
     /// nothing could disable them. Stops before removing the key if the timers can't be forgotten, and tracks
     /// the timers again if the key can't be removed, so a person who stays signed in keeps every timer.
+    /// A timer file that can't be saved while forgetting or restoring the timers is reported as `timersNotSaved`.
     func signOutAnyway() async throws {
         let discarded: DiscardedTimers
         do {
             discarded = try engine.discardAll()
-        } catch {
+        } catch TimerEngineError.storeUnavailable {
             throw SignOutError.timerDataUnreadable
+        } catch {
+            throw SignOutError.timersNotSaved
         }
         do {
             try removeAccount()
         } catch {
-            try? engine.restore(discarded)
+            do {
+                try engine.restore(discarded)
+            } catch {
+                throw SignOutError.timersNotSaved
+            }
             throw error
         }
     }
@@ -324,7 +337,9 @@ enum AliasActionError: Error, Equatable {
                 guard let api else { throw TimerEngineError.notSignedIn }
                 let session = self.session
                 let alias = try await api.alias(id: aliasID)
-                guard session == self.session else { throw TimerEngineError.accountChanged }
+                guard session == self.session else {
+                    throw AliasActionError.timerNotStartedForPreviousAccount(email: alias.email)
+                }
                 guard alias.enabled else {
                     recordEnabled(false, aliasID: aliasID)
                     throw AliasActionError.alreadyDisabled(email: alias.email)
@@ -575,11 +590,21 @@ enum AliasActionError: Error, Equatable {
             try await action()
             lastError = nil
             return true
-        } catch TimerEngineError.accountChanged {
-            return false
         } catch {
-            fail(with: error)
+            if !(api == nil && isMootAfterSignOut(error)) {
+                fail(with: error)
+            }
             return false
+        }
+    }
+
+    /// Someone who signed out does not need to hear that an action was cut off, unless an alias may still be enabled.
+    private func isMootAfterSignOut(_ error: any Error) -> Bool {
+        switch error {
+        case TimerEngineError.accountChanged(_, disabledAgain: true), AliasActionError.timerNotStartedForPreviousAccount:
+            true
+        default:
+            false
         }
     }
 
@@ -677,6 +702,12 @@ enum AliasActionError: Error, Equatable {
             "\(email) is already disabled."
         case AliasActionError.timerAlreadyEnded(let email):
             "\(email) was already disabled."
+        case AliasActionError.timerNotStartedForPreviousAccount(let email):
+            "\(email) belongs to the previous account, so no timer was started."
+        case TimerEngineError.accountChanged(let email, disabledAgain: true):
+            "\(email) was enabled for the previous account and has been disabled."
+        case TimerEngineError.accountChanged(let email, disabledAgain: false):
+            "\(email) was enabled for the previous account and could not be disabled."
         case TimerEngineError.notSignedIn:
             "Not signed in. Set up your API key first."
         case TimerEngineError.disableInProgress:
