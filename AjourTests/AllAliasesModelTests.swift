@@ -423,6 +423,18 @@ final class AllAliasesModelTests {
         #expect(model.accessibilityLabel(for: try #require(model.aliases.first)) == "travel@example.com, pinned, enabled")
     }
 
+    @Test func aRowReadsItsNoteAfterItsStatus() async throws {
+        let (model, _) = try await loadedModel([
+            Fixtures.aliasJSON(id: 1, email: "travel@example.com", enabled: true, pinned: true, note: "Flights and hotels"),
+            Fixtures.aliasJSON(id: 2, email: "shop@example.com", enabled: false, pinned: false, note: ""),
+        ])
+
+        #expect(model.aliases.map(model.accessibilityLabel(for:)) == [
+            "travel@example.com, pinned, enabled, Flights and hotels",
+            "shop@example.com, disabled",
+        ])
+    }
+
     // MARK: Row state
 
     @Test func rowsShowWhetherAnAliasIsEnabled() async throws {

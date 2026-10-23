@@ -109,9 +109,9 @@ struct MenuRendererTests {
             fullText: message
         )])
 
-        let view = try noticeView(of: try #require(menu.items.first))
-        #expect(view.toolTip == message)
-        #expect(view.accessibilityLabel() == message)
+        let item = try #require(menu.items.first)
+        #expect(try noticeView(of: item).toolTip == message)
+        #expect(item.accessibilityTitle() == message)
     }
 
     @Test func aNoticeWithoutFullTextSpeaksTitleAndDetail() throws {
@@ -123,12 +123,20 @@ struct MenuRendererTests {
             symbol: "pin"
         )])
 
-        let view = try noticeView(of: try #require(menu.items.first))
+        let item = try #require(menu.items.first)
         let spoken = "No pinned aliases yet\nOpen All Aliases, right-click an alias and choose Pin to keep it here."
-        #expect(view.accessibilityLabel() == spoken)
-        #expect(view.toolTip == spoken)
-        #expect(view.isAccessibilityElement() == true)
-        #expect(view.accessibilityRole() == .staticText)
+        #expect(item.accessibilityTitle() == spoken)
+        #expect(try noticeView(of: item).toolTip == spoken)
+    }
+
+    @Test func aNoticeIsSpokenOnceByItsItemNotAgainByItsView() throws {
+        let renderer = makeRenderer()
+
+        renderer.show([.notice(title: "Not set up", detail: "Add a SimpleLogin API key to manage your aliases.", symbol: "key")])
+
+        let item = try #require(menu.items.first)
+        #expect(item.accessibilityTitle() == "Not set up\nAdd a SimpleLogin API key to manage your aliases.")
+        #expect(try noticeView(of: item).isAccessibilityElement() == false)
     }
 
     @Test func aNoticeUpdatedInPlaceDropsTheFullTextItNoLongerHas() throws {
@@ -141,7 +149,7 @@ struct MenuRendererTests {
         let view = try noticeView(of: item)
         #expect(menu.items.first === item)
         #expect(view.toolTip == "Not set up")
-        #expect(view.accessibilityLabel() == "Not set up")
+        #expect(item.accessibilityTitle() == "Not set up")
     }
 
     @Test func aChangedNoticeUpdatesTheSameItem() throws {
@@ -240,7 +248,16 @@ struct MenuRendererTests {
         #expect(foregroundColor(ofLine: 0, in: item) == .labelColor)
         #expect(foregroundColor(ofLine: 1, in: item) == Palette.stateTimed)
         #expect(item.image?.isTemplate == false)
-        #expect(item.accessibilityLabel() == "travel@alexmorgan.example")
+    }
+
+    @Test func aliasRowsSpeakOnlyTheirLabel() throws {
+        let renderer = makeRenderer()
+        let label = "travel@alexmorgan.example, pinned, enabled, 47 minutes left, turns off at 14:54"
+
+        renderer.show([.alias(MenuAliasRow(id: 7, email: "travel@alexmorgan.example", status: travelStatus(words: "47:06 left"), accessibilityLabel: label), [])])
+
+        let item = try #require(menu.items.first)
+        #expect(item.accessibilityTitle() == label)
     }
 
     @Test func busyAliasRowsUseTheOffColor() throws {

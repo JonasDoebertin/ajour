@@ -135,13 +135,16 @@ enum EmptyState: Equatable {
         )
     }
 
+    /// The row shows the note under the address, so VoiceOver reads it too, after the status.
     func accessibilityLabel(for alias: Alias) -> String {
-        AliasStatus.accessibilityLabel(
+        let status = AliasStatus.accessibilityLabel(
             email: alias.email,
             pinned: alias.pinned,
             state: state(of: alias),
             change: appModel.change(aliasID: alias.id)
         )
+        guard let note = alias.note, !note.isEmpty else { return status }
+        return status + ", " + note
     }
 
     var sections: [AliasSection] {

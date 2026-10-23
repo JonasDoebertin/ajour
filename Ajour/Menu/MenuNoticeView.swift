@@ -2,7 +2,8 @@ import AppKit
 
 /// Shows a menu notice at full contrast. AppKit dims the title of a disabled item, so the notice draws itself instead,
 /// with its symbol and text lined up with the other items. It is information, not an action: it takes no highlight and
-/// no clicks.
+/// no clicks. Its menu item speaks `spokenText` to VoiceOver, so the view stays out of the accessibility tree instead of
+/// offering the same text a second time.
 @MainActor final class MenuNoticeView: NSView {
     static let maximumTextWidth: CGFloat = 230
 
@@ -24,6 +25,7 @@ import AppKit
     private var content: Content?
     private(set) var symbolImage: NSImage?
     private var text = NSAttributedString()
+    private(set) var spokenText = ""
     /// Until the notice is in a menu, it assumes the column of the alias rows' status symbols, the widest in Ajour's menus.
     private var imageColumnWidth: CGFloat = 16
 
@@ -46,8 +48,6 @@ import AppKit
     init() {
         super.init(frame: .zero)
         autoresizingMask = .width
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
     }
 
     @available(*, unavailable)
@@ -64,9 +64,8 @@ import AppKit
         self.content = content
         symbolImage = Self.symbolImage(symbol, tone: tone)
         text = Self.text(title: title, detail: detail)
-        let fullText = fullText ?? [title, detail].compactMap { $0 }.joined(separator: "\n")
-        toolTip = fullText
-        setAccessibilityLabel(fullText)
+        spokenText = fullText ?? [title, detail].compactMap { $0 }.joined(separator: "\n")
+        toolTip = spokenText
         let textSize = Self.size(of: text)
         let naturalWidth = textLeading + textSize.width + Self.trailingInset
         setFrameSize(NSSize(

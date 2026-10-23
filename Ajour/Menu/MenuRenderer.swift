@@ -102,11 +102,14 @@ import AppKit
         switch entry {
         case let .notice(title, detail, symbol, tone, fullText):
             item.title = title
-            (item.view as? MenuNoticeView)?.show(title: title, detail: detail, symbol: symbol, tone: tone, fullText: fullText)
+            let view = item.view as? MenuNoticeView
+            view?.show(title: title, detail: detail, symbol: symbol, tone: tone, fullText: fullText)
+            item.setAccessibilityTitle(view?.spokenText)
         case let .alias(row, _):
             item.attributedTitle = Self.aliasTitle(row, isHighlighted: isHighlighted)
             item.image = StateSymbol.image(for: row.status.kind, highlighted: isHighlighted)
-            item.setAccessibilityLabel(row.accessibilityLabel)
+            // Replaces the two visible lines for VoiceOver; a label would be read in addition to them.
+            item.setAccessibilityTitle(row.accessibilityLabel)
         case let .action(title, _, symbol, _, _, tone):
             item.title = title
             item.image = symbol.flatMap { Self.symbolImage($0, tone: tone, isHighlighted: isHighlighted) }

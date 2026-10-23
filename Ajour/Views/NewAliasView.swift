@@ -11,6 +11,7 @@ struct NewAliasView: View {
                 FormRow("Prefix") {
                     TextField("Prefix", text: $model.prefix, prompt: Text("shop"))
                         .labelsHidden()
+                        .accessibilityLabel("Prefix")
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { submit() }
                 }
