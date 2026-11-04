@@ -61,7 +61,7 @@ runs:
         base64 --decode <<< "$API_KEY" > "$key"
         credentials=(--key "$key" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID")
 
-        submission="$(xcrun notarytool submit "$ARCHIVE" "${credentials[@]}" --wait --output-format json)" || true
+        submission="$(xcrun notarytool submit "$ARCHIVE" "${credentials[@]}" --wait --timeout 1h --output-format json)" || true
         echo "$submission"
         id="$(jq -r '.id // empty' <<< "$submission" 2> /dev/null || true)"
         status="$(jq -r '.status // empty' <<< "$submission" 2> /dev/null || true)"
@@ -69,11 +69,18 @@ runs:
           echo "::error::The submission to Apple's notary service failed. Check the NOTARY_API_* secrets."
           exit 1
         fi
-        if [ "$status" != "Accepted" ]; then
-          xcrun notarytool log "$id" "${credentials[@]}" || true
-          echo "::error::Apple did not notarize the app (status: ${status:-unknown})."
-          exit 1
-        fi
+        case "$status" in
+          Accepted) ;;
+          Invalid | Rejected)
+            xcrun notarytool log "$id" "${credentials[@]}" || true
+            echo "::error::Apple did not notarize the app (status: $status)."
+            exit 1
+            ;;
+          *)
+            echo "::error::Apple is still processing submission $id after an hour. Rerun the job later."
+            exit 1
+            ;;
+        esac
 
     - name: Staple and check the app
       shell: bash
