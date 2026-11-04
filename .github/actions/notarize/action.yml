@@ -43,6 +43,10 @@ runs:
           echo "::error::The signature has no secure timestamp."
           exit 1
         fi
+        if codesign --display --entitlements - --xml "$APP" 2> /dev/null | grep -q "com.apple.security.get-task-allow"; then
+          echo "::error::The app requests get-task-allow, which notarization rejects."
+          exit 1
+        fi
 
     - name: Notarize the app
       shell: bash
