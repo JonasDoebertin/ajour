@@ -1,0 +1,61 @@
+name: Install the signing certificate
+description: >-
+  Imports a Developer ID Application identity into a temporary keychain that codesign can use without a prompt.
+  The job must delete the keychain afterwards with `security delete-keychain`, also when it fails.
+
+inputs:
+  certificate:
+    description: The identity as a base64-encoded .p12
+    required: true
+  password:
+    description: Password of the .p12
+    required: true
+
+outputs:
+  keychain:
+    description: Path of the temporary keychain
+    value: ${{ steps.install.outputs.keychain }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install the certificate
+      id: install
+      shell: bash
+      env:
+        CERTIFICATE: ${{ inputs.certificate }}
+        CERTIFICATE_PASSWORD: ${{ inputs.password }}
+      run: |
+        keychain="$RUNNER_TEMP/signing.keychain-db"
+        identity="$RUNNER_TEMP/developer-id.p12"
+        intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+        trap 'rm -f "$identity" "$intermediate"' EXIT
+
+        keychain_password="$(uuidgen)"
+        echo "::add-mask::$keychain_password"
+
+        security create-keychain -p "$keychain_password" "$keychain"
+        security set-keychain-settings -lut 21600 "$keychain"
+        security unlock-keychain -p "$keychain_password" "$keychain"
+        echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+
+        base64 --decode <<< "$CERTIFICATE" > "$identity"
+        if ! security import "$identity" -k "$keychain" -f pkcs12 -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+          echo "::error::Could not import the Developer ID certificate. Check DEVELOPER_ID_CERTIFICATE and its password."
+          exit 1
+        fi
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+
+        curl --fail --silent --show-error --location \
+          https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer --output "$intermediate"
+        security import "$intermediate" -k "$keychain"
+
+        read -r -a search_list <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
+        security list-keychains -d user -s "$keychain" "${search_list[@]}"
+
+        identities="$(security find-identity -v -p codesigning "$keychain")"
+        echo "$identities"
+        if [ "$(grep -c '"Developer ID Application: ' <<< "$identities")" -ne 1 ]; then
+          echo "::error::The keychain needs exactly one valid Developer ID Application identity."
+          exit 1
+        fi

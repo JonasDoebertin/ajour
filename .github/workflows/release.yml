@@ -1,8 +1,11 @@
 name: Release
 
+# A version tag attaches the signed and notarized build to a draft release. A manual run goes through the same
+# signing and notarization on any branch and keeps the zip as a workflow artifact instead.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,6 +17,9 @@ defaults:
 concurrency:
   group: release-${{ github.ref }}
 
+env:
+  TEAM_ID: KA74RG7337
+
 jobs:
   release:
     runs-on: xcode-27
@@ -24,6 +30,7 @@ jobs:
 
       - name: Check the tag
         id: tag
+        if: github.ref_type == 'tag'
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -40,15 +47,32 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/test
 
+      - id: certificate
+        uses: ./.github/actions/install-certificate
+        with:
+          certificate: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+
       - id: build
         uses: ./.github/actions/build
         with:
           version: ${{ steps.tag.outputs.version }}
           build-number: ${{ github.run_number }}
-          archive-name: Ajour-${{ steps.tag.outputs.version }}
+          archive-name: Ajour-${{ steps.tag.outputs.version || format('run{0}', github.run_number) }}
+          team-id: ${{ env.TEAM_ID }}
+
+      - uses: ./.github/actions/notarize
+        with:
+          app: ${{ steps.build.outputs.app }}
+          archive: ${{ steps.build.outputs.archive }}
+          team-id: ${{ env.TEAM_ID }}
+          api-key: ${{ secrets.NOTARY_API_KEY }}
+          api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
+          api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
 
       # A rerun replaces the build on the existing draft instead of failing.
       - name: Attach the build to a draft release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -60,3 +84,17 @@ jobs:
           else
             gh release create "$TAG" "$ARCHIVE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
           fi
+
+      - name: Keep the build as an artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.build.outputs.archive }}
+          archive: false
+          retention-days: 14
+
+      - name: Delete the signing keychain
+        if: always() && steps.certificate.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.certificate.outputs.keychain }}
+        run: security delete-keychain "$KEYCHAIN"

@@ -11,8 +11,14 @@ inputs:
   archive-name:
     description: File name of the zip, without extension
     required: true
+  team-id:
+    description: Team whose Developer ID signs the app; empty keeps the ad-hoc signature
+    default: ""
 
 outputs:
+  app:
+    description: Path of the built app
+    value: ${{ steps.build.outputs.app }}
   archive:
     description: Path of the zipped app
     value: ${{ steps.archive.outputs.path }}
@@ -21,13 +27,22 @@ runs:
   using: composite
   steps:
     - name: Build the app
+      id: build
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
         BUILD_NUMBER: ${{ inputs.build-number }}
+        TEAM_ID: ${{ inputs.team-id }}
       run: |
         settings=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
         if [ -n "$VERSION" ]; then settings+=("MARKETING_VERSION=$VERSION"); fi
+        if [ -n "$TEAM_ID" ]; then
+          settings+=(
+            "CODE_SIGN_IDENTITY=Developer ID Application"
+            "DEVELOPMENT_TEAM=$TEAM_ID"
+            "OTHER_CODE_SIGN_FLAGS=--timestamp"
+          )
+        fi
         xcodebuild build \
           -project Ajour.xcodeproj \
           -scheme Ajour \
@@ -36,13 +51,15 @@ runs:
           -derivedDataPath build/DerivedData \
           "${settings[@]}" \
           | xcbeautify --renderer github-actions
+        echo "app=build/DerivedData/Build/Products/Release/Ajour.app" >> "$GITHUB_OUTPUT"
 
     - name: Zip the app
       id: archive
       shell: bash
       env:
+        APP: ${{ steps.build.outputs.app }}
         ARCHIVE_NAME: ${{ inputs.archive-name }}
       run: |
         path="build/$ARCHIVE_NAME.zip"
-        ditto -c -k --keepParent build/DerivedData/Build/Products/Release/Ajour.app "$path"
+        ditto -c -k --keepParent "$APP" "$path"
         echo "path=$path" >> "$GITHUB_OUTPUT"

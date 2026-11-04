@@ -1,0 +1,89 @@
+name: Notarize
+description: >-
+  Checks the app's Developer ID signature, has Apple notarize it, staples the ticket, checks that Gatekeeper accepts
+  it, and replaces the zip with one of the stapled app.
+
+inputs:
+  app:
+    description: Path of the signed app
+    required: true
+  archive:
+    description: Path of the zip to submit; replaced by a zip of the stapled app
+    required: true
+  team-id:
+    description: Team that must have signed the app
+    required: true
+  api-key:
+    description: App Store Connect API key as a base64-encoded .p8
+    required: true
+  api-key-id:
+    description: ID of the API key
+    required: true
+  api-issuer-id:
+    description: Issuer ID of the API key
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check the signature
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+        TEAM_ID: ${{ inputs.team-id }}
+      run: |
+        codesign --verify --strict --deep --verbose=2 "$APP"
+        details="$(codesign --display --verbose=2 "$APP" 2>&1)"
+        echo "$details"
+        if ! grep -qx "TeamIdentifier=$TEAM_ID" <<< "$details"; then
+          echo "::error::The app is not signed by team $TEAM_ID."
+          exit 1
+        fi
+        if ! grep -q "^Timestamp=" <<< "$details"; then
+          echo "::error::The signature has no secure timestamp."
+          exit 1
+        fi
+
+    - name: Notarize the app
+      shell: bash
+      env:
+        ARCHIVE: ${{ inputs.archive }}
+        API_KEY: ${{ inputs.api-key }}
+        API_KEY_ID: ${{ inputs.api-key-id }}
+        API_ISSUER_ID: ${{ inputs.api-issuer-id }}
+      run: |
+        key="$RUNNER_TEMP/notary-key.p8"
+        trap 'rm -f "$key"' EXIT
+        base64 --decode <<< "$API_KEY" > "$key"
+        credentials=(--key "$key" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID")
+
+        submission="$(xcrun notarytool submit "$ARCHIVE" "${credentials[@]}" --wait --output-format json)" || true
+        echo "$submission"
+        id="$(jq -r '.id // empty' <<< "$submission" 2> /dev/null || true)"
+        status="$(jq -r '.status // empty' <<< "$submission" 2> /dev/null || true)"
+        if [ -z "$id" ]; then
+          echo "::error::The submission to Apple's notary service failed. Check the NOTARY_API_* secrets."
+          exit 1
+        fi
+        if [ "$status" != "Accepted" ]; then
+          xcrun notarytool log "$id" "${credentials[@]}" || true
+          echo "::error::Apple did not notarize the app (status: ${status:-unknown})."
+          exit 1
+        fi
+
+    - name: Staple and check the app
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+        ARCHIVE: ${{ inputs.archive }}
+      run: |
+        xcrun stapler staple "$APP"
+        xcrun stapler validate "$APP"
+        assessment="$(spctl --assess --type execute --verbose=4 "$APP" 2>&1)" || true
+        echo "$assessment"
+        if ! grep -q "source=Notarized Developer ID" <<< "$assessment"; then
+          echo "::error::Gatekeeper does not accept the app as notarized."
+          exit 1
+        fi
+        rm "$ARCHIVE"
+        ditto -c -k --keepParent "$APP" "$ARCHIVE"
