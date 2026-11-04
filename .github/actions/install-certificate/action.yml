@@ -46,9 +46,11 @@ runs:
         fi
         security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
 
-        curl --fail --silent --show-error --location \
-          https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer --output "$intermediate"
-        security import "$intermediate" -k "$keychain"
+        if ! security find-certificate -c "Developer ID Certification Authority" "$keychain" > /dev/null 2>&1; then
+          curl --fail --silent --show-error --location \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer --output "$intermediate"
+          security import "$intermediate" -k "$keychain"
+        fi
 
         read -r -a search_list <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
         security list-keychains -d user -s "$keychain" "${search_list[@]}"
