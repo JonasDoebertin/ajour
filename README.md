@@ -44,10 +44,10 @@ Ajour turns that into two clicks. Pick the alias in the menu bar, enable it for 
 You need macOS 26 or later and a SimpleLogin account.
 
 1. Download `Ajour-<version>.zip` from the [latest release](https://github.com/JonasDoebertin/ajour/releases/latest), unzip it, and move `Ajour.app` to your Applications folder.
-2. Open Ajour. Because the app isn't notarized by Apple, macOS blocks it the first time. Open System Settings > Privacy & Security, scroll down, and choose Open Anyway.
+2. Open Ajour. macOS asks once whether you want to open an app downloaded from the internet; choose Open.
 3. Follow the setup window. It takes you to SimpleLogin to create an API key and offers to use the key from your clipboard when you come back.
 
-After an update, macOS may ask whether Ajour may use its key in the Keychain. Choose Always Allow.
+Releases after 0.3.0 are signed with a Developer ID and notarized by Apple. When you update from 0.3.0 or earlier, macOS asks once more whether Ajour may use its key in the Keychain. Choose Always Allow; later updates don't ask again.
 
 ## Privacy and security
 

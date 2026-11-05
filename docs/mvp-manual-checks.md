@@ -99,3 +99,12 @@ The quoted demo states come from the Debug build with `-AjourDemo YES`; check wi
 5. Danger and accent: "Sign Out" in Settings is in Danger. New Alias's "Create" button, once a prefix is entered, is filled with the accent color.
 6. Notices: "Not set up" (with `-AjourDemoSignedOut YES`) and "No pinned aliases yet" (unpin the four pinned aliases in All Aliases) show the title in black in Light and white in Dark, with a gray detail, not dimmed. With a real account and Wi-Fi off, the network notice's symbol is in Danger.
 7. Still-enabled sheet: with a real account, Wi-Fi off, and a running timer, Settings › Sign Out › Sign Out shows "An Alias Is Still Enabled". "Sign Out Anyway" is in Danger and Cancel is filled with the accent color; both follow a switch while the sheet is open.
+
+## Signed release
+
+Use the zip of the first signed release, or the artifact of a manual run of the Release workflow. Start with Ajour 0.3.0 installed, signed in, with a pinned alias and a running timer.
+
+1. Download the zip with a browser, unzip it, and replace `/Applications/Ajour.app`. Opening it asks only whether to open an app downloaded from the internet, with no "Open Anyway" detour through Privacy & Security.
+2. `spctl -a -vv /Applications/Ajour.app` prints "accepted", "source=Notarized Developer ID" and "origin=Developer ID Application: Jonas Döbertin (KA74RG7337)".
+3. On the first launch after the update, macOS asks once whether Ajour may use its key in the Keychain. After Always Allow, the menu shows the pinned alias and the running timer, and no prompt asks to let Ajour access data from other apps.
+4. Install the next signed release the same way: it opens without any Keychain prompt.
