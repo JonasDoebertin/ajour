@@ -14,7 +14,7 @@ Releases are signed with the owner's Developer ID and notarized by Apple; the re
 
 ## Website
 
-The landing page at <https://jonasdoebertin.github.io/ajour/> is the static site in `site/`: HTML and CSS without JavaScript, with its fonts and images in the same folder.
+The landing page at <https://dieserjonas.dev/ajour/> is the static site in `site/`: HTML and CSS without JavaScript, with its fonts and images in the same folder.
 
 - **Pull requests** that change `site/`, `scripts/check-site.py`, or the workflow run the website check.
 - **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings.

@@ -26,7 +26,7 @@ Visitors should leave smiling, having found the page funny, and eager to control
 ## Non-goals
 
 - Promoting the page. That comes later.
-- A custom domain. The page lives at the default GitHub Pages address, `https://jonasdoebertin.github.io/ajour/`, for now.
+- A custom domain for Ajour. The owner's GitHub user site has the custom domain `dieserjonas.dev`, so GitHub serves the project site at `https://dieserjonas.dev/ajour/`; that is the page's address for now (owner, 2026-11-06). A domain of its own comes later.
 - More than one page, a blog, a changelog, or translations. The page is in English.
 - A newsletter signup, contact form, or any other way to collect data.
 
@@ -104,6 +104,8 @@ Decided by the owner after the design review (2026-11-06):
 - The testimonials show a one-star rating as plain visuals, never as structured data (builder's call).
 - No guard against a future unsigned release behind the "latest" link. Every release since 0.3.1 is signed by the release workflow (builder's call).
 - The Open Graph image is a 1200×630 PNG with the app icon and the headline, made from the approved design and committed (builder's call).
+- Fonts: Besley (display, with italics), Atkinson Hyperlegible Next (body) and Atkinson Hyperlegible Mono (caption), all SIL OFL, instead of the design's Fraunces, Inter and JetBrains Mono, which have become the default look of generated pages (owner, 2026-11-06). The pen file uses the same fonts.
+- No `robots.txt`: under a project path, crawlers only read the one at the host root.
 - Enabling GitHub Pages and setting the repository's homepage change public settings. The builder asks the owner before doing either (builder's call).
 
 ## Left to the builder

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the approved pen.dev landing page as a static site on GitHub Pages at `https://jonasdoebertin.github.io/ajour/`.
+**Goal:** Ship the approved pen.dev landing page as a static site on GitHub Pages at `https://dieserjonas.dev/ajour/` (the owner's user site has that custom domain, so GitHub serves the project site there).
 
 **Architecture:**
 - The page is hand-written semantic HTML and one CSS file in `site/`, with no JavaScript. Light and dark follow `prefers-color-scheme`.
@@ -27,7 +27,7 @@
   - Plain `<a>` links to GitHub and `dieserjonas.dev` are fine.
 - The page lives under `/ajour/`, so every local URL is relative. No URL starts with `/`.
 - The made-up testimonials are never in structured data. JSON-LD has no `Review` and no `aggregateRating`.
-- The fonts are Fraunces (display), Inter (body) and JetBrains Mono (caption), all under the SIL OFL and served from `site/fonts/` with their license files.
+- The fonts are Besley (display), Atkinson Hyperlegible Next (body) and Atkinson Hyperlegible Mono (caption), all under the SIL OFL and served from `site/fonts/` with their license files. (Changed from Fraunces, Inter and JetBrains Mono after the build; see the spec.)
 - Colors, sizes and spacing come from the design's `web-*` variables and frames, read with `Get(..., {resolveVariables: true})`. The design is 1440 wide, and below 900 px every section is one column.
 - The builder never changes macOS system settings and only launches the Debug build in demo mode. The owner switches the system appearance for the screenshots.
 - Enabling GitHub Pages and setting the repository homepage need the owner's go-ahead first.
@@ -152,7 +152,6 @@
   - `scripts/check-site.py`
   - `site/index.html`
   - `site/style.css`
-  - `site/robots.txt`
   - `site/sitemap.xml`
 
 **Interfaces:**
@@ -176,7 +175,7 @@
   - **Head:**
     - `lang="en"`, the charset and viewport meta tags, and `<meta name="color-scheme" content="light dark">`.
     - `<title>Ajour: SimpleLogin aliases from your Mac's menu bar</title>` and the meta description from the brief.
-    - A canonical link to `https://jonasdoebertin.github.io/ajour/`.
+    - A canonical link to `https://dieserjonas.dev/ajour/`.
     - Open Graph and Twitter tags (`summary_large_image`), with the absolute URL to `og-image.png`.
     - The favicon and the apple-touch-icon.
     - The CSP meta tag: `default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'`.
@@ -213,8 +212,8 @@
   - **Shadows:** done with `filter: drop-shadow()` on the transparent screenshots and illustrations.
   - **Focus:** `:focus-visible` gets a 2 px outline in `web-accent`.
   - **Motion:** none.
-- [ ] **Step 5: Add `robots.txt` and `sitemap.xml`. Then run the check and fix it until it passes.**
-  - `robots.txt` allows everything and points to the sitemap. `sitemap.xml` lists the canonical URL.
+- [ ] **Step 5: Add `sitemap.xml`. Then run the check and fix it until it passes.**
+  - `sitemap.xml` lists the canonical URL. There is no `robots.txt`: under a project path, crawlers only read the one at the host root.
   - Run `python3 -I scripts/check-site.py site`. Expected: `site OK` and exit 0.
 - [ ] **Step 6: Check the page in a browser.**
   - Open `file://$PWD/site/index.html` with Playwright, at 1440×900 and at 390×844, each in light and dark (`browser_emulate_media` colorScheme).
@@ -251,7 +250,7 @@
   - Add a "Website" section: what deploys, when, from where, how to run the check locally, and that Pages uses "GitHub Actions" as its source.
   - Replace the outdated paragraph that calls builds ad-hoc signed. It should say that releases are signed with a Developer ID and notarized, and that pull request builds stay ad-hoc signed.
 - [ ] **Step 4: Update `README.md`.**
-  - Add a "Website" link to `https://jonasdoebertin.github.io/ajour/` in the centered intro.
+  - Add a "Website" link to `https://dieserjonas.dev/ajour/` in the centered intro.
   - Fix the menu screenshot's alt text to match the image: 47 minutes left, turning off at 15:41.
 - [ ] **Step 5: Commit, push, open the PR.**
   - Commit: `git commit -m "Deploy the landing page to GitHub Pages"`.
@@ -262,5 +261,5 @@
   - Expected: `gh api repos/JonasDoebertin/ajour/pages --jq .build_type` prints `workflow`.
 - [ ] **Step 7: Merge and set the homepage.**
   - The owner approves the merge. Then run `gh pr merge --merge --delete-branch`.
-  - Wait for the `pages.yml` run on `main`. Expected: it succeeds, and `curl -sI https://jonasdoebertin.github.io/ajour/` returns `200`.
-  - Run `gh repo edit JonasDoebertin/ajour --homepage https://jonasdoebertin.github.io/ajour/`. Ask first, as in Step 6.
+  - Wait for the `pages.yml` run on `main`. Expected: it succeeds, and `curl -sI https://dieserjonas.dev/ajour/` returns `200`.
+  - Run `gh repo edit JonasDoebertin/ajour --homepage https://dieserjonas.dev/ajour/`. Ask first, as in Step 6.
