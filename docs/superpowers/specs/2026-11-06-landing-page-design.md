@@ -1,6 +1,6 @@
 # Ajour: Landing Page
 
-Status: draft for review
+Status: approved
 Date: 2026-11-06
 Issue: #43
 Companion: `2026-11-06-landing-page-pen-prompt.md` (the content brief for pen.dev)
