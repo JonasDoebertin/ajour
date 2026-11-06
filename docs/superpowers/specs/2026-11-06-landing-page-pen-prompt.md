@@ -25,6 +25,17 @@ Design a single-page marketing website for **Ajour**, a free, open-source macOS 
   - Use only openly licensed fonts, so the page can serve them itself.
   - Support light and dark appearance. The screenshots exist only in dark appearance, so they have to look right on both.
 
+## Files
+
+- **Design document (background, goals and rules behind this brief):** `/Users/jonas/Code/simplelogin-macos/docs/superpowers/specs/2026-11-06-landing-page-design.md`
+- **App icon, 1024×1024:** `/Users/jonas/Code/simplelogin-macos/Ajour/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png`
+- **Screenshots:** in `/Users/jonas/Code/simplelogin-macos/docs/images/`
+  - `/Users/jonas/Code/simplelogin-macos/docs/images/menu.png`
+  - `/Users/jonas/Code/simplelogin-macos/docs/images/all-aliases.png`
+  - `/Users/jonas/Code/simplelogin-macos/docs/images/new-alias.png`
+  - `/Users/jonas/Code/simplelogin-macos/docs/images/settings.png`
+  - `/Users/jonas/Code/simplelogin-macos/docs/images/onboarding.png`
+
 ## Assets
 
 - **App icon:** the macOS app icon.
