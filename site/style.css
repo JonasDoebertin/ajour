@@ -1,31 +1,31 @@
 @font-face {
-  font-family: "Fraunces";
-  src: url("fonts/fraunces.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Besley";
+  src: url("fonts/besley.woff2") format("woff2");
+  font-weight: 400 900;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Fraunces";
-  src: url("fonts/fraunces-italic.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Besley";
+  src: url("fonts/besley-italic.woff2") format("woff2");
+  font-weight: 400 900;
   font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Inter";
-  src: url("fonts/inter.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("fonts/atkinson-hyperlegible-next.woff2") format("woff2");
+  font-weight: 200 800;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "JetBrains Mono";
-  src: url("fonts/jetbrains-mono.woff2") format("woff2");
-  font-weight: 100 800;
+  font-family: "Atkinson Hyperlegible Mono";
+  src: url("fonts/atkinson-hyperlegible-mono.woff2") format("woff2");
+  font-weight: 200 800;
   font-style: normal;
   font-display: swap;
 }
@@ -50,9 +50,9 @@
   --stage-accent-hover: #6fdccd;
   --stage-on-accent: #06231f;
 
-  --font-display: "Fraunces", Georgia, serif;
-  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-display: "Besley", Georgia, serif;
+  --font-body: "Atkinson Hyperlegible Next", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace;
 
   --gutter: clamp(20px, 8.34vw, 120px);
   --section-space: clamp(72px, 8.9vw, 128px);
@@ -148,6 +148,12 @@ a {
   max-width: calc(1200px + 2 * var(--gutter));
   margin: 0 auto;
   padding-inline: var(--gutter);
+}
+
+h1,
+h2,
+.footer-title {
+  text-wrap: balance;
 }
 
 h2 {
@@ -381,6 +387,11 @@ h2 {
 
 .old-way .wrap {
   padding-block: 136px 128px;
+}
+
+.title-line {
+  display: block;
+  text-wrap: balance;
 }
 
 .old-way-title {

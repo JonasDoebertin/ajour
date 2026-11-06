@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://jonasdoebertin.github.io/ajour/sitemap.xml
