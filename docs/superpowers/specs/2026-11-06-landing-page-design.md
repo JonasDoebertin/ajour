@@ -99,7 +99,7 @@ Decided by the owner after the design review (2026-11-06):
 - Hosting on GitHub Pages under the default address; custom domain later (owner).
 - Self-ironic humor, satirical testimonials, serious trust section (owner).
 - English, one page, the screenshots from `docs/images/` (builder's call, accepted by the owner).
-- The download buttons download the latest version directly from `https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip`; every release also carries its zip as `Ajour.zip` for that stable name (owner, 2026-11-06). Before that they linked to the release page, because the zip's name carries the version (builder's call).
+- The download buttons download the latest version directly from `https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip`; releases after 0.3.1 attach their zip only as `Ajour.zip`, without the version in the file name; 0.3.1 keeps `Ajour-0.3.1.zip` next to the `Ajour.zip` added by hand (owner, 2026-11-06). Before that they linked to the release page, because the zip's name carries the version (builder's call).
 - The prince in the testimonials has no nationality, so the joke stays on the scam and not on a country (builder's call).
 - The testimonials show a one-star rating as plain visuals, never as structured data (builder's call).
 - No guard against a future unsigned release behind the "latest" link. Every release since 0.3.1 is signed by the release workflow (builder's call).

@@ -58,7 +58,7 @@ jobs:
         with:
           version: ${{ steps.tag.outputs.version }}
           build-number: ${{ github.run_number }}
-          archive-name: Ajour-${{ steps.tag.outputs.version || format('run{0}', github.run_number) }}
+          archive-name: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
           team-id: ${{ env.TEAM_ID }}
 
       - uses: ./.github/actions/notarize
@@ -79,12 +79,10 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
           ARCHIVE: ${{ steps.build.outputs.archive }}
         run: |
-          latest="$RUNNER_TEMP/Ajour.zip"
-          cp "$ARCHIVE" "$latest"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$ARCHIVE" "$latest" --clobber
+            gh release upload "$TAG" "$ARCHIVE" --clobber
           else
-            gh release create "$TAG" "$ARCHIVE" "$latest" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
+            gh release create "$TAG" "$ARCHIVE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
           fi
 
       - name: Keep the build as an artifact
