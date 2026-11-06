@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Ajour: SimpleLogin aliases from your Mac's menu bar</title>
+  <meta name="description" content="Enable a SimpleLogin alias for 5 minutes, get the login code, and let Ajour disable it again. A free, open-source menu bar app for macOS.">
+  <link rel="canonical" href="https://jonasdoebertin.github.io/ajour/">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://jonasdoebertin.github.io/ajour/">
+  <meta property="og:title" content="Ajour: SimpleLogin aliases from your Mac's menu bar">
+  <meta property="og:description" content="Enable a SimpleLogin alias for 5 minutes, get the login code, and let Ajour disable it again. A free, open-source menu bar app for macOS.">
+  <meta property="og:image" content="https://jonasdoebertin.github.io/ajour/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Ajour app icon and the line: Let the login code in. Keep the spam out.">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Ajour",
+    "description": "A free, open-source macOS menu bar app that enables a SimpleLogin alias for a few minutes and disables it again.",
+    "url": "https://jonasdoebertin.github.io/ajour/",
+    "operatingSystem": "macOS 26 or later",
+    "applicationCategory": "UtilitiesApplication",
+    "downloadUrl": "https://github.com/JonasDoebertin/ajour/releases/latest",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Ajour made by SimpleLogin or Proton?",
+        "acceptedAnswer": {"@type": "Answer", "text": "No. Ajour is an independent app built on SimpleLogin's public API. It is not affiliated with SimpleLogin or Proton AG."}
+      },
+      {
+        "@type": "Question",
+        "name": "What does it cost?",
+        "acceptedAnswer": {"@type": "Answer", "text": "Nothing. Ajour is free and open source under the MIT license."}
+      },
+      {
+        "@type": "Question",
+        "name": "What do I need?",
+        "acceptedAnswer": {"@type": "Answer", "text": "A Mac with macOS 26 or later and a SimpleLogin account. Ajour signs in with an API key that you create in SimpleLogin; the setup walks you through it."}
+      },
+      {
+        "@type": "Question",
+        "name": "What happens if my Mac sleeps while a timer runs?",
+        "acceptedAnswer": {"@type": "Answer", "text": "The alias is disabled as soon as your Mac wakes and Ajour is running."}
+      },
+      {
+        "@type": "Question",
+        "name": "Does it work with a self-hosted SimpleLogin?",
+        "acceptedAnswer": {"@type": "Answer", "text": "Not yet. It's planned."}
+      },
+      {
+        "@type": "Question",
+        "name": "Can I install it with Homebrew?",
+        "acceptedAnswer": {"@type": "Answer", "text": "Not yet. For now, download the zip, unzip it, and move Ajour to your Applications folder."}
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="icon-download" viewBox="0 0 18 18"><path d="M8.802 1.529q-.325 .11-.488 .396l-.052 .11v7.396l-1.279-1.279q-.809-.809-1.072-1.05-.26-.242-.33-.282-.255-.105-.514-.03-.259 .07-.422 .276-.163 .207-.145 .475v.035q.018 .145 .088 .255 .092 .145 .47 .541l1.547 1.546q1.964 1.96 2.052 2.018 .075 .035 .136 .044 .062 .008 .207 .008 .145 0 .207-.008 .061-.009 .136-.044 .088-.058 2.052-2.018 1.332-1.331 1.652-1.674 .326-.343 .383-.431 .123-.29 .013-.575-.106-.29-.413-.435-.106-.035-.286-.035h-.035q-.163 0-.255 .035-.123 .074-.395 .325-.198 .198-.897 .901l-1.424 1.402v-7.396l-.052-.11q-.128-.233-.361-.343-.11-.053-.29-.062-.18-.008-.233 .009zM2.052 10.529q-.325 .11-.488 .396l-.052 .11 .017 3.348q0 .304 .035 .396 .181 .628 .603 1.055 .426 .421 1.054 .602 .11 .035 .919 .035l4.86 .017 4.86-.017q.809 0 .919-.035 .628-.181 1.05-.602 .426-.427 .607-1.055 .035-.092 .035-.396l.017-3.348-.052-.11q-.128-.216-.361-.343-.074-.035-.127-.053-.053-.017-.198-.017-.145 0-.198 .017-.052 .018-.127 .053-.233 .127-.36 .343l-.053 .11-.018 3.383-.053 .128q-.18 .356-.558 .431-.127 .035-5.383 .035-5.256 0-5.383-.035-.378-.075-.558-.431l-.053-.128-.018-3.383-.052-.11q-.128-.233-.361-.343-.11-.053-.29-.061-.18-.009-.233 .008z" fill="currentColor"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 16 16"><path d="M9.762 2.047q-.129 .051-.145 .066l-2.051 2.047q-.863 .863-1.101 1.106-.32 .336-.402 .461-.063 .097-.047 .226v.047q0 .176 .047 .289 .113 .223 .359 .32 .25 .094 .488 .016 .082-.031 .266-.207 .183-.18 1.015-.992l1.153-1.153v3.153q0 3.168-.031 3.39-.032 .399-.192 .735-.191 .371-.512 .644-.32 .27-.738 .399l-.176 .062h-2.59q-2.578 .016-2.64 .032-.145 .046-.258 .167-.109 .122-.16 .266-.109 .254 .023 .512 .137 .254 .41 .336 .114 .031 2.559 .031 2.449 0 2.723-.031 1.101-.145 1.894-.926 .793-.785 .969-1.891 .031-.129 .031-.738v-6.141l1.153 1.153q.832 .812 1.015 .992 .184 .176 .266 .207 .238 .078 .488-.016 .246-.097 .359-.32 .047-.113 .047-.289v-.047q.016-.129-.047-.226-.082-.125-.402-.461-.238-.243-1.101-1.106l-2.051-2.047q-.016-.015-.145-.066-.11-.047-.238-.047-.129 0-.238 .047z" fill="currentColor"/></symbol>
+    <symbol id="icon-star" viewBox="0 0 20 20"><path d="M10 1.667l2.575 5.216 5.758 .842-4.166 4.058 .983 5.734-5.15-2.709-5.15 2.709 .983-5.734-4.166-4.058 5.758-.842z"/></symbol>
+  </svg>
+
+  <header class="nav">
+    <div class="wrap nav-row">
+      <a class="brand" href="./">
+        <img src="images/app-icon.png" width="40" height="40" alt="">
+        <span>Ajour</span>
+      </a>
+      <a class="nav-link" href="https://github.com/JonasDoebertin/ajour">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <div class="wrap hero-row">
+        <div class="hero-copy">
+          <h1 class="hero-title">Let the login<br> code in. <em>Keep the spam out.</em></h1>
+          <p class="hero-subline">Ajour turns a SimpleLogin alias on for a few minutes and off again, right from your Mac's menu bar. That's all it does, and it is unreasonably proud of it.</p>
+          <div class="cta">
+            <a class="button" href="https://github.com/JonasDoebertin/ajour/releases/latest">
+              <svg class="button-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+              Download Ajour for Mac
+            </a>
+            <p class="small-print">Free and open source · macOS 26 or later</p>
+          </div>
+        </div>
+        <figure class="hero-visual">
+          <div class="desktop">
+            <div class="menu-bar" aria-hidden="true">
+              <img class="menu-bar-status" src="images/menubar-status.svg" width="37" height="24" alt="">
+              <span class="menu-bar-spacer"></span>
+              <img class="menu-bar-icon" src="images/menubar-battery.svg" width="17" height="11" alt="">
+              <img class="menu-bar-icon" src="images/menubar-wifi.svg" width="15" height="11" alt="">
+              <span class="clock clock-light">Fri 6 Nov&nbsp;&nbsp;12:33</span>
+              <span class="clock clock-dark">Fri 6 Nov&nbsp;&nbsp;12:35</span>
+            </div>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="images/menu-dark.png">
+              <img class="desktop-menu" src="images/menu-light.png" width="483" height="415" alt="The Ajour menu open below its menu bar icon. One alias has a timer with 4 minutes left, and the actions for another timed alias are open: Copy Address, Disable Now, Keep Enabled, and Extend.">
+            </picture>
+          </div>
+          <figcaption class="caption">
+            <svg class="caption-arrow" aria-hidden="true"><use href="#icon-arrow"></use></svg>
+            That menu is the whole app.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="old-way stage" id="the-old-way" aria-labelledby="old-way-title">
+      <div class="wrap">
+        <h2 class="old-way-title" id="old-way-title">The old way,<br>a tragedy in six acts</h2>
+        <ol class="acts">
+          <li><span class="act-number">Act I</span><span class="act-text">A website wants to email you a login code.</span></li>
+          <li><span class="act-number">Act II</span><span class="act-text">Its alias is disabled, because this website has never sent you anything but spam.</span></li>
+          <li><span class="act-number">Act III</span><span class="act-text">You open the SimpleLogin dashboard and scroll past 200 other aliases to find it.</span></li>
+          <li><span class="act-number">Act IV</span><span class="act-text">You enable it, go back, request the code again, and wait.</span></li>
+          <li><span class="act-number">Act V</span><span class="act-text">The code arrives. You log in. You feel accomplished.</span></li>
+          <li class="act-final"><span class="act-number">Act VI</span><span class="act-text">You forget to disable the alias. Three weeks later, the newsletter finds you.</span></li>
+        </ol>
+        <p class="curtain">The end. Nobody claps.</p>
+      </div>
+    </section>
+
+    <section class="ajour-way" id="the-ajour-way" aria-labelledby="ajour-way-title">
+      <div class="wrap">
+        <h2 id="ajour-way-title">The Ajour way</h2>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-ui">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="images/step-1-dark.png">
+                <img class="step-image" src="images/step-1-light.png" width="301" height="152" alt="The Pinned section of the Ajour menu with the disabled alias online-shops selected.">
+              </picture>
+            </div>
+            <div class="step-text">
+              <span class="step-number" aria-hidden="true">1.</span>
+              <h3>Click the alias in the menu bar.</h3>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-ui">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="images/step-2-dark.png">
+                <img class="step-image" src="images/step-2-light.png" width="237" height="118" alt="The alias's submenu with Copy Address and Enable for 5 Minutes, 1 Hour, or 24 Hours. Enable for 5 Minutes is selected.">
+              </picture>
+            </div>
+            <div class="step-text">
+              <span class="step-number" aria-hidden="true">2.</span>
+              <h3>Enable it for 5 minutes and log in.</h3>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-ui">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="images/step-3-dark.png">
+                <img class="step-image step-image-notification" src="images/step-3-light.png" width="367" height="141" alt="A notification: Mail received. Alias turns off at 14:58. online-shops@alexmorgan.example from login@shop.example. It has a Disable Now button.">
+              </picture>
+            </div>
+            <div class="step-text">
+              <span class="step-number" aria-hidden="true">3.</span>
+              <h3>Disable it when the mail arrives.</h3>
+              <p>A notification offers it right away. Ignore it, and Ajour disables the alias when the time is up.</p>
+            </div>
+          </li>
+        </ol>
+        <p class="closing">That's it. That's the app.</p>
+      </div>
+    </section>
+
+    <section class="features tinted" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <h2 id="features-title">Small app, surprisingly many opinions</h2>
+        <div class="features-main">
+          <div class="shot shot-all-aliases">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="images/all-aliases-dark.png">
+              <img src="images/all-aliases-light.png" width="520" height="652" alt="The All Aliases window with a search field, four pinned aliases, and other aliases, each showing whether it is enabled, disabled, or how much time it has left.">
+            </picture>
+          </div>
+          <div class="feature-list">
+            <div class="feature">
+              <h3>Timers for aliases.</h3>
+              <p>Turn any pinned alias on for 5 minutes, 1 hour, or 24 hours. The menu counts down and tells you when the alias turns off. Extend, keep, or end the timer early.</p>
+            </div>
+            <div class="feature">
+              <h3>Mail alerts with an off switch.</h3>
+              <p>While a timer runs, Ajour checks the alias every 15 seconds. When mail arrives, the notification has a Disable Now button.</p>
+            </div>
+            <div class="feature">
+              <h3>No alias left behind.</h3>
+              <p>If your Mac was asleep or Ajour wasn't running when a timer ended, the alias is disabled right after wake or at the next launch. Quitting Ajour disables timed aliases first.</p>
+            </div>
+            <div class="feature">
+              <h3>Every alias, searchable.</h3>
+              <p>The All Aliases window searches your whole account. Pin the ones you need to the menu.</p>
+            </div>
+          </div>
+        </div>
+        <div class="features-more">
+          <div class="feature-with-shot">
+            <div class="shot">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="images/new-alias-dark.png">
+                <img src="images/new-alias-light.png" width="420" height="274" alt="The New Alias window with the prefix concert-tickets, a suffix of one of your domains, and a preview of the full address.">
+              </picture>
+            </div>
+            <div class="feature">
+              <h3>New aliases in one click.</h3>
+              <p>Create a random alias and get it on your clipboard, optionally with an expiry date. Or pick your own prefix and one of your custom domains.</p>
+            </div>
+          </div>
+          <div class="feature-with-shot">
+            <div class="shot">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="images/settings-dark.png">
+                <img src="images/settings-light.png" width="420" height="461" alt="The Settings window with the account, a Launch at login switch, and the About section.">
+              </picture>
+            </div>
+            <div class="feature">
+              <h3>Out of your way.</h3>
+              <p>Ajour lives in the menu bar, has no Dock icon, and can start at login. Every alias state has its own symbol and word, and VoiceOver reads them too.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="testimonials" id="reviews" aria-labelledby="reviews-title">
+      <div class="wrap">
+        <div class="title-block">
+          <h2 id="reviews-title">Reviews from the other side</h2>
+          <p class="intro">These people are made up. Their frustration is not.</p>
+        </div>
+        <div class="reviews">
+          <figure class="review">
+            <p class="rating"><span class="stars" aria-hidden="true"><svg class="star star-filled"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg></span>1 out of 5</p>
+            <blockquote>“I used to reach 40,000 inboxes before breakfast. Now I reach an alias that was enabled for five minutes, two weeks ago.”</blockquote>
+            <figcaption><strong>Gary, Weekly Deals Newsletter.</strong> <span>His unsubscribe link has been broken since 2014.</span></figcaption>
+          </figure>
+          <figure class="review">
+            <p class="rating"><span class="stars" aria-hidden="true"><svg class="star star-filled"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg></span>1 out of 5</p>
+            <blockquote>“I had a once-in-a-lifetime business opportunity for this person. The alias was disabled before I got to the second paragraph.”</blockquote>
+            <figcaption><strong>A Prince with an urgent fund transfer.</strong></figcaption>
+          </figure>
+          <figure class="review">
+            <p class="rating"><span class="stars" aria-hidden="true"><svg class="star star-filled"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg></span>1 out of 5</p>
+            <blockquote>“We noticed you haven't opened our emails in a while. We are starting to think it's personal.”</blockquote>
+            <figcaption><strong>The re-engagement bot of a shop you bought one sock from.</strong></figcaption>
+          </figure>
+          <figure class="review">
+            <p class="rating"><span class="stars" aria-hidden="true"><svg class="star star-filled"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg><svg class="star"><use href="#icon-star"></use></svg></span>1 out of 5</p>
+            <blockquote>“Your package could not be delivered. Neither could my email.”</blockquote>
+            <figcaption><strong>Definitely a courier.</strong></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="serious tinted" id="the-serious-part" aria-labelledby="serious-title">
+      <div class="wrap split">
+        <div class="title-block">
+          <h2 id="serious-title">The serious part</h2>
+          <p class="intro">We'll stop joking for a moment.</p>
+        </div>
+        <div class="split-content">
+          <dl class="facts">
+            <div><dt>An API key, never your password.</dt><dd>It is stored in your Keychain and nowhere else.</dd></div>
+            <div><dt>One destination.</dt><dd>Ajour only talks to app.simplelogin.io.</dd></div>
+            <div><dt>No analytics.</dt><dd>Ajour has no tracking and no third-party dependencies.</dd></div>
+            <div><dt>Sandboxed.</dt><dd>The App Sandbox allows outgoing network connections and nothing else.</dd></div>
+            <div><dt>Signed and notarized.</dt><dd>Releases carry a Developer ID and are notarized by Apple.</dd></div>
+            <div><dt>Open source.</dt><dd>The code is on GitHub under the MIT license.</dd></div>
+            <div class="honest-limit"><dt>Honest limit.</dt><dd>SimpleLogin can't disable an alias on a schedule, so the timers run on your Mac. If your Mac sleeps through the end of a timer, the alias stays enabled until it wakes and Ajour is running.</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq" id="questions" aria-labelledby="faq-title">
+      <div class="wrap split">
+        <div class="title-block">
+          <h2 id="faq-title">Questions</h2>
+        </div>
+        <div class="split-content">
+          <div class="question">
+            <h3>Is Ajour made by SimpleLogin or Proton?</h3>
+            <p>No. Ajour is an independent app built on SimpleLogin's public API. It is not affiliated with SimpleLogin or Proton AG.</p>
+          </div>
+          <div class="question">
+            <h3>What does it cost?</h3>
+            <p>Nothing. Ajour is free and open source under the MIT license.</p>
+          </div>
+          <div class="question">
+            <h3>What do I need?</h3>
+            <p>A Mac with macOS 26 or later and a SimpleLogin account. Ajour signs in with an API key that you create in SimpleLogin; the setup walks you through it.</p>
+          </div>
+          <div class="question">
+            <h3>What happens if my Mac sleeps while a timer runs?</h3>
+            <p>The alias is disabled as soon as your Mac wakes and Ajour is running.</p>
+          </div>
+          <div class="question">
+            <h3>Does it work with a self-hosted SimpleLogin?</h3>
+            <p>Not yet. It's planned.</p>
+          </div>
+          <div class="question">
+            <h3>Can I install it with Homebrew?</h3>
+            <p>Not yet. For now, download the zip, unzip it, and move Ajour to your Applications folder.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer stage">
+    <div class="wrap">
+      <div class="final-cta">
+        <img class="footer-icon" src="images/app-icon.png" width="72" height="72" alt="">
+        <p class="footer-title">Let the login code in.<br><em>Keep the spam out.</em></p>
+        <a class="button button-on-stage" href="https://github.com/JonasDoebertin/ajour/releases/latest">
+          <svg class="button-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+          Download Ajour for Mac
+        </a>
+        <ul class="footer-links">
+          <li><a href="https://github.com/JonasDoebertin/ajour">Source code on GitHub</a></li>
+          <li><a href="https://github.com/JonasDoebertin/ajour/issues">Report a bug or suggest an idea</a></li>
+        </ul>
+      </div>
+      <div class="bottom-bar">
+        <p>MIT License · Ajour is an independent app and is not affiliated with SimpleLogin or Proton AG.</p>
+        <ul class="legal">
+          <li><a href="https://dieserjonas.dev/imprint/">Imprint</a></li>
+          <li><a href="https://dieserjonas.dev/disclaimer/">Disclaimer</a></li>
+          <li><a href="https://dieserjonas.dev/privacy/">Privacy</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
