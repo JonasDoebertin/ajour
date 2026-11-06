@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <title>Ajour: SimpleLogin aliases from your Mac's menu bar</title>
   <meta name="description" content="Enable a SimpleLogin alias for 5 minutes, get the login code, and let Ajour disable it again. A free, open-source menu bar app for macOS.">
   <link rel="canonical" href="https://dieserjonas.dev/ajour/">
@@ -116,8 +116,7 @@
               <span class="menu-bar-spacer"></span>
               <img class="menu-bar-icon" src="images/menubar-battery.svg" width="17" height="11" alt="">
               <img class="menu-bar-icon" src="images/menubar-wifi.svg" width="15" height="11" alt="">
-              <span class="clock clock-light">Fri 6 Nov&nbsp;&nbsp;12:33</span>
-              <span class="clock clock-dark">Fri 6 Nov&nbsp;&nbsp;12:35</span>
+              <span class="clock">Fri 6 Nov&nbsp;&nbsp;12:33</span>
             </div>
             <picture>
               <source media="(prefers-color-scheme: dark)" srcset="images/menu-dark.png">
@@ -361,5 +360,6 @@
       </div>
     </div>
   </footer>
+  <script type="module" src="clock.js"></script>
 </body>
 </html>

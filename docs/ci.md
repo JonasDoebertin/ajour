@@ -14,22 +14,23 @@ Releases are signed with the owner's Developer ID and notarized by Apple; the re
 
 ## Website
 
-The landing page at <https://dieserjonas.dev/ajour/> is the static site in `site/`: HTML and CSS without JavaScript, with its fonts and images in the same folder.
+The landing page at <https://dieserjonas.dev/ajour/> is the static site in `site/`: HTML and CSS, with its fonts and images in the same folder. Its only script, `clock.js`, shows the visitor's current date and time in the hero's menu bar.
 
-- **Pull requests** that change `site/`, `scripts/check-site.py`, or the workflow run the website check.
+- **Pull requests** that change `site/`, `scripts/check-site.py`, `scripts/clock.test.mjs`, or the workflow run the website check and the clock tests.
 - **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings.
 
 Run the check locally:
 
 ```sh
 python3 -I scripts/check-site.py site
+node --test scripts/clock.test.mjs
 ```
 
 It fails on:
 
 - a missing file;
 - a URL that starts with `/`, which breaks because the page lives under `/ajour/`;
-- anything loaded from another server, and any JavaScript;
+- anything loaded from another server, and any script other than a module from `site/`;
 - rating markup, and FAQ data that doesn't match the page;
 - an image without alt text or size;
 - a download link that doesn't point to the latest release.
