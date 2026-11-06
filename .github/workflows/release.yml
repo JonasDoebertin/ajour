@@ -79,10 +79,12 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
           ARCHIVE: ${{ steps.build.outputs.archive }}
         run: |
+          latest="$RUNNER_TEMP/Ajour.zip"
+          cp "$ARCHIVE" "$latest"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$ARCHIVE" --clobber
+            gh release upload "$TAG" "$ARCHIVE" "$latest" --clobber
           else
-            gh release create "$TAG" "$ARCHIVE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
+            gh release create "$TAG" "$ARCHIVE" "$latest" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
           fi
 
       - name: Keep the build as an artifact
