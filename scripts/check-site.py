@@ -39,7 +39,7 @@ class Page(HTMLParser):
         if tag == "script":
             self._script_type = attributes.get("type", "")
             self._script_text = []
-            self.scripts.append(self._script_type)
+            self.scripts.append((self._script_type, attributes.get("src")))
             if "src" in attributes:
                 self.references.append(("script src", attributes["src"]))
         if tag == "h1":
@@ -132,9 +132,12 @@ def check(site):
             elif problem := local_problem(site, stylesheet.parent, url):
                 problems.append(f"{stylesheet.name} url({url}) {problem}")
 
-    for script_type in page.scripts:
-        if script_type != "application/ld+json":
-            problems.append(f"<script type=\"{script_type}\"> is not allowed; the page has no JavaScript")
+    for script_type, source in page.scripts:
+        if script_type == "application/ld+json" and source is None:
+            continue
+        if script_type == "module" and source is not None:
+            continue
+        problems.append(f"<script type=\"{script_type}\"> is not allowed; only module scripts from site/ may run")
 
     visible = " ".join(" ".join(page.visible_text).split())
     for block in page.json_ld:

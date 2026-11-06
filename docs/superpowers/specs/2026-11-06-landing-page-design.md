@@ -36,6 +36,7 @@ Visitors should leave smiling, having found the page funny, and eager to control
 - Humor at the expense of the reader, of SimpleLogin or Proton, or of any group of people. The targets are spam, spammers, and Ajour's own modesty.
 - Jokes about security, bugs, or the API key. The trust section is plain and serious.
 - Claims the app doesn't back up. Every feature and fact on the page must match the README.
+- JavaScript beyond the menu bar clock: the hero's fake menu bar shows the visitor's current date and time through one first-party module script, `clock.js` (owner, 2026-11-06). No other script, no inline script.
 - Analytics, tracking, cookies, or requests to third parties, including web fonts, badges and scripts from CDNs. An app whose pitch is "no analytics" can't have a page that tracks. Plain links to GitHub are fine.
 - The made-up testimonials in structured data. They must not show up as `Review` or `aggregateRating` markup, which search engines would treat as fake reviews.
 

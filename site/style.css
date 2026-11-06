@@ -346,20 +346,6 @@ h2 {
   flex: 1;
 }
 
-.clock-dark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  .clock-light {
-    display: none;
-  }
-
-  .clock-dark {
-    display: inline;
-  }
-}
-
 .desktop-menu {
   position: absolute;
   top: 5.893cqw;
