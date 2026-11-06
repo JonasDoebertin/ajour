@@ -639,7 +639,8 @@ h2 {
 }
 
 .split .title-block {
-  flex: 0 1 440px;
+  flex: 0 3 440px;
+  min-width: 0;
 }
 
 .split h2 {
@@ -669,7 +670,8 @@ h2 {
 }
 
 .facts dt {
-  flex: 0 0 280px;
+  flex: 0 1 280px;
+  min-width: 0;
   font-weight: 600;
   line-height: 1.35;
 }

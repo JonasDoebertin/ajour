@@ -23,6 +23,7 @@ class Page(HTMLParser):
         self.scripts = []
         self.json_ld = []
         self.images = []
+        self.lists_without_role = []
         self.h1_count = 0
         self.links = []
         self.visible_text = []
@@ -45,6 +46,8 @@ class Page(HTMLParser):
             self.h1_count += 1
         if tag == "img":
             self.images.append(attributes)
+        if tag in ("ol", "ul") and attributes.get("role") != "list":
+            self.lists_without_role.append(attributes.get("class", tag))
         if tag == "a":
             self._open_link = {"href": attributes.get("href", ""), "text": []}
         for name in ("src", "href"):
@@ -86,9 +89,16 @@ def is_external(url):
     return re.match(r"^[a-z][a-z0-9+.-]*:|^//", url, re.IGNORECASE) is not None
 
 
-def local_target(base, url):
+def local_problem(site, base, url):
     path = url.split("#")[0].split("?")[0]
-    return (base / path).resolve() if path else None
+    if not path:
+        return None
+    target = (base / path).resolve()
+    if not target.is_relative_to(site):
+        return "points outside the site directory, which is all that gets deployed"
+    if not target.is_file():
+        return "does not exist"
+    return None
 
 
 def check(site):
@@ -105,10 +115,8 @@ def check(site):
             problems.append(f"{where} {url} is root-relative; the page lives under /ajour/")
         elif is_external(url):
             problems.append(f"{where} {url} loads from another server")
-        else:
-            target = local_target(site, url)
-            if target is not None and not target.is_file():
-                problems.append(f"{where} {url} does not exist")
+        elif problem := local_problem(site, site, url):
+            problems.append(f"{where} {url} {problem}")
 
     for stylesheet in site.rglob("*.css"):
         text = stylesheet.read_text(encoding="utf-8")
@@ -121,8 +129,8 @@ def check(site):
                 problems.append(f"{stylesheet.name} url({url}) is root-relative")
             elif is_external(url):
                 problems.append(f"{stylesheet.name} url({url}) loads from another server")
-            elif not local_target(stylesheet.parent, url).is_file():
-                problems.append(f"{stylesheet.name} url({url}) does not exist")
+            elif problem := local_problem(site, stylesheet.parent, url):
+                problems.append(f"{stylesheet.name} url({url}) {problem}")
 
     for script_type in page.scripts:
         if script_type != "application/ld+json":
@@ -145,6 +153,9 @@ def check(site):
                     problems.append(f"FAQ question not on the page: {name}")
                 if answer not in visible:
                     problems.append(f"FAQ answer not on the page: {answer}")
+
+    for name in page.lists_without_role:
+        problems.append(f"list {name} needs role=\"list\"; without list markers, Safari drops its list semantics")
 
     if page.h1_count != 1:
         problems.append(f"the page has {page.h1_count} <h1> elements instead of one")
