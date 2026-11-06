@@ -1,22 +1,29 @@
 // Takes the README screenshots from a Debug build running in demo mode.
 //
-//     swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark]
+//     swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark] [transparent]
 //
 // The optional `dark` argument launches the demo with `-AppleInterfaceStyle Dark`. That only affects the windows: the
 // status menu follows the system appearance, so switch the system itself to take the menu in the other appearance.
+//
+// The optional `transparent` argument takes every screenshot without a shadow and without a backdrop, on a transparent
+// background, as the website uses them. Turn on Reduce Transparency in Accessibility > Display first: without a
+// backdrop, macOS draws the translucent menu material in the wrong color.
 //
 // Needs Screen Recording and Accessibility permission for the terminal app. While it runs, it covers the screen
 // with a backdrop and moves the mouse, so don't touch the Mac until it finishes.
 
 import AppKit
 import ApplicationServices
+import ImageIO
 
 let arguments = CommandLine.arguments
-guard arguments.count == 3 || (arguments.count == 4 && arguments[3] == "dark") else {
-    print("usage: swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark]")
+let options = Set(arguments.dropFirst(3))
+guard arguments.count >= 3, arguments.count - 3 == options.count, options.isSubset(of: ["dark", "transparent"]) else {
+    print("usage: swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> [dark] [transparent]")
     exit(2)
 }
-let usesDarkWindows = arguments.count == 4
+let usesDarkWindows = options.contains("dark")
+let isTransparent = options.contains("transparent")
 let appURL = URL(fileURLWithPath: arguments[1])
 let outputURL = URL(fileURLWithPath: arguments[2], isDirectory: true)
 try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
@@ -167,21 +174,27 @@ func bounds(of window: [String: Any]) -> CGRect {
     CGRect(dictionaryRepresentation: window[kCGWindowBounds as String] as! CFDictionary) ?? .zero
 }
 
-func screencapture(_ arguments: [String], to name: String) {
+func screencapture(_ arguments: [String], toFile fileURL: URL) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-    process.arguments = ["-x"] + arguments + [outputURL.appendingPathComponent(name).path]
+    process.arguments = ["-x"] + arguments + [fileURL.path]
     try? process.run()
     process.waitUntilExit()
+}
+
+func screencapture(_ arguments: [String], to name: String) {
+    screencapture(arguments, toFile: outputURL.appendingPathComponent(name))
     print("saved \(name)")
 }
+
+let withoutShadow = isTransparent ? ["-o"] : []
 
 func captureWindow(titled title: String, of process: Process, as name: String) {
     for _ in 0..<50 {
         if let window = windows(of: process).first(where: { ($0[kCGWindowName as String] as? String) == title }),
            let id = window[kCGWindowNumber as String] as? Int {
             wait(1.5)
-            screencapture(["-l", String(id)], to: name)
+            screencapture(withoutShadow + ["-l", String(id)], to: name)
             return
         }
         wait(0.2)
@@ -213,8 +226,23 @@ final class Backdrop {
     }
 }
 
+/// Captures the open menus without a backdrop. A capture of one menu window includes its open submenus, so the
+/// image covers every menu window; anything else means macOS changed how it captures menus.
+func captureTransparentMenus(_ menus: [[String: Any]], as name: String) {
+    guard let id = menus.first?[kCGWindowNumber as String] as? Int else { fail("the menu has no window") }
+    screencapture(withoutShadow + ["-l", String(id)], to: name)
+    let scale = NSScreen.screens[0].backingScaleFactor
+    let area = menus.map(bounds).reduce(CGRect.null) { $0.union($1) }
+    let fileURL = outputURL.appendingPathComponent(name)
+    guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+          let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+          image.width == Int(area.width * scale), image.height == Int(area.height * scale) else {
+        fail("\(name) does not cover all open menus")
+    }
+}
+
 func captureMenu(of process: Process, hovering title: (String) -> Bool, as name: String) {
-    let backdrop = Backdrop()
+    let backdrop = isTransparent ? nil : Backdrop()
     let item = openMenu(of: process)
     if let entry = menuItem(in: item, titled: title) {
         move(to: CGPoint(x: frame(of: entry).midX, y: frame(of: entry).midY))
@@ -222,11 +250,15 @@ func captureMenu(of process: Process, hovering title: (String) -> Bool, as name:
     }
     let menus = windows(of: process).filter { ($0[kCGWindowLayer as String] as? Int ?? 0) >= Int(CGWindowLevelForKey(.popUpMenuWindow)) }
     guard !menus.isEmpty else { fail("the menu did not open") }
-    let area = menus.map(bounds).reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -56, dy: -40)
-    screencapture(["-R", "\(Int(area.minX)),\(Int(max(area.minY, 0))),\(Int(area.width)),\(Int(area.height))"], to: name)
+    if isTransparent {
+        captureTransparentMenus(menus, as: name)
+    } else {
+        let area = menus.map(bounds).reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -56, dy: -40)
+        screencapture(["-R", "\(Int(area.minX)),\(Int(max(area.minY, 0))),\(Int(area.width)),\(Int(area.height))"], to: name)
+    }
     press(keyCode: escapeKey)
     press(keyCode: escapeKey)
-    backdrop.remove()
+    backdrop?.remove()
     wait(0.5)
 }
 
