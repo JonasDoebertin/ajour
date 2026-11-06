@@ -4,7 +4,7 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 
 - **Pushes to `main` and pull requests:** run the SimpleLoginKit and app tests.
 - **Builds for pull requests:** add the `build` label to a pull request. The workflow removes the label, builds the app, and comments with a download link. The build is kept for 14 days. To build a newer commit, add the label again.
-- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour-1.2.3.zip` to a draft release with generated notes. Review the draft on GitHub and publish it.
+- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour.zip` to a draft release titled "Ajour 1.2.3" with generated notes. The zip keeps one name across releases, so `releases/latest/download/Ajour.zip` always downloads the latest published version; the website and the README link to it. Manual runs of the workflow keep their zip as an artifact named `Ajour-run<number>`. Review the draft on GitHub and publish it.
 
 ```sh
 git tag v1.2.3 && git push origin v1.2.3
@@ -33,7 +33,7 @@ It fails on:
 - anything loaded from another server, and any script other than a module from `site/`;
 - rating markup, and FAQ data that doesn't match the page;
 - an image without alt text or size;
-- a download link that doesn't point to the latest release.
+- a download link that doesn't point to `releases/latest/download/Ajour.zip`.
 
 The screenshots on the page are transparent, in a light and a dark version. To retake them:
 

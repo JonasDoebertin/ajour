@@ -11,7 +11,7 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-LATEST_RELEASE = "https://github.com/JonasDoebertin/ajour/releases/latest"
+LATEST_DOWNLOAD = "https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip"
 CSS_URL = re.compile(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)")
 
 
@@ -174,7 +174,7 @@ def check(site):
     if len(downloads) < 2:
         problems.append(f"the page has {len(downloads)} download links instead of at least two")
     for link in downloads:
-        if link["href"] != LATEST_RELEASE:
+        if link["href"] != LATEST_DOWNLOAD:
             problems.append(f"download link points to {link['href']}")
 
     return problems

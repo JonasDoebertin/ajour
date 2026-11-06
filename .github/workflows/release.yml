@@ -58,7 +58,7 @@ jobs:
         with:
           version: ${{ steps.tag.outputs.version }}
           build-number: ${{ github.run_number }}
-          archive-name: Ajour-${{ steps.tag.outputs.version || format('run{0}', github.run_number) }}
+          archive-name: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
           team-id: ${{ env.TEAM_ID }}
 
       - uses: ./.github/actions/notarize
