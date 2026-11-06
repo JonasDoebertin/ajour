@@ -53,7 +53,7 @@ Design a single-page marketing website for **Ajour**, a free, open-source macOS 
 - **Headline:** Let the login code in. Keep the spam out.
 - **Subline:** Ajour turns a SimpleLogin alias on for a few minutes and off again, right from your Mac's menu bar. That's all it does, and it is unreasonably proud of it.
 - **Primary button:** Download Ajour for Mac → `https://github.com/JonasDoebertin/ajour/releases/latest`
-- **Small print next to the button:** Free and open source · macOS 26 or later · Signed and notarized
+- **Small print next to the button:** Free and open source · macOS 26 or later
 - **Visual:** the `menu.png` screenshot, ideally shown as if it hangs from a Mac menu bar.
 
 ### 2. The old way

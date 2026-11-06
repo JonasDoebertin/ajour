@@ -50,7 +50,7 @@ Visitors should leave smiling, having found the page funny, and eager to control
 
 From top to bottom. The pen.dev prompt carries the draft copy for each section.
 
-1. **Hero:** name, a one-line headline, a self-ironic subline, the download button with "free, open source, macOS 26 or later" next to it, and the menu screenshot.
+1. **Hero:** name, a one-line headline, a self-ironic subline, the download button with "free and open source, macOS 26 or later" next to it, and the menu screenshot.
 2. **The old way:** the manual routine as an overly dramatic tragedy in numbered acts, ending with the forgotten alias that lets the newsletter back in.
 3. **The Ajour way:** the same task in three steps, ending with "That's it. That's the app."
 4. **Features:** the README's feature list, rewritten in the page's tone, with the remaining screenshots.
@@ -86,14 +86,13 @@ Taken from the README; nothing beyond these.
 
 ## Screenshots
 
-- The five screenshots in `docs/images/` exist in one appearance only: dark, on a blue gradient backdrop that is part of the image.
-  - menu: 1190×990
-  - all aliases: 1264×1528
-  - new alias: 1064×772
-  - settings: 1064×1146
-  - onboarding: 1064×1172
-- Light versions would mean switching the Mac's appearance to take them, so the page works with this one set in both its light and dark appearance.
-- The page serves its own copies from `site/`.
+Decided by the owner after the design review (2026-11-06):
+
+- **New screenshots:** The page uses new screenshots, not the README's. Each is on a transparent background and exists in a light and a dark version, and the page shows the one that matches its own appearance.
+- **Hero:** The hero uses a transparent screenshot of the open menu as well. The menu bar and the blue desktop behind it are built in HTML and CSS.
+- **macOS appearance:** The status menu follows the system appearance. The owner switches it between the light and the dark capture; the builder doesn't change system settings.
+- **Location:** The page serves its own copies from `site/`. The README keeps its current screenshots.
+- **Approved design:** pen.dev, `Ajour.pen`, frames "Landing Page — Light" and "Landing Page — Dark" (approved 2026-11-06). The hero's small print drops "Signed and notarized"; the serious part keeps it.
 
 ## Decided
 
