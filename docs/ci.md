@@ -10,4 +10,32 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-Builds are ad-hoc signed, because signing for distribution needs a paid Apple Developer account. macOS therefore asks before opening a downloaded build the first time: open it once, then allow it in System Settings > Privacy & Security.
+Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
+
+## Website
+
+The landing page at <https://dieserjonas.dev/ajour/> is the static site in `site/`: HTML and CSS without JavaScript, with its fonts and images in the same folder.
+
+- **Pull requests** that change `site/`, `scripts/check-site.py`, or the workflow run the website check.
+- **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings.
+
+Run the check locally:
+
+```sh
+python3 -I scripts/check-site.py site
+```
+
+It fails on:
+
+- a missing file;
+- a URL that starts with `/`, which breaks because the page lives under `/ajour/`;
+- anything loaded from another server, and any JavaScript;
+- rating markup, and FAQ data that doesn't match the page;
+- an image without alt text or size;
+- a download link that doesn't point to the latest release.
+
+The screenshots on the page are transparent, in a light and a dark version. To retake them:
+
+1. Turn on Reduce Transparency in System Settings > Accessibility > Display.
+2. Run the script once with the Mac in Light and once in Dark, from a Debug build: `swift scripts/take-screenshots.swift <path to Debug Ajour.app> <output directory> transparent`.
+3. Copy the results to `site/images/<name>-light.png` and `site/images/<name>-dark.png`.

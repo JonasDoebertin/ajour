@@ -5,13 +5,17 @@
 </p>
 
 <p align="center">
+  <a href="https://dieserjonas.dev/ajour/">Website</a> · <a href="https://github.com/JonasDoebertin/ajour/releases/latest">Download</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/JonasDoebertin/ajour/actions/workflows/ci.yml"><img src="https://github.com/JonasDoebertin/ajour/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-blue" alt="macOS 26 or later">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  <img src="docs/images/menu.png" width="600" alt="The Ajour menu with timed and pinned aliases, one of them enabled with 47 minutes left and turning off at 15:20">
+  <img src="docs/images/menu.png" width="600" alt="The Ajour menu with timed and pinned aliases, one of them enabled with 47 minutes left and turning off at 15:41">
 </p>
 
 Some websites send nothing but spam, so you keep their [SimpleLogin](https://simplelogin.io) alias disabled. Then you need to log in, the site emails you a login code, and you have to open the SimpleLogin dashboard, enable the alias, wait for the mail, and remember to disable it again.
