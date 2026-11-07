@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dieserjonas.dev/ajour/">Website</a> · <a href="https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip">Download</a>
+  <a href="https://ajour.email/">Website</a> · <a href="https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip">Download</a>
 </p>
 
 <p align="center">
