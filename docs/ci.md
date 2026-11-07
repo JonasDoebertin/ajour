@@ -14,10 +14,10 @@ Releases are signed with the owner's Developer ID and notarized by Apple; the re
 
 ## Website
 
-The landing page at <https://dieserjonas.dev/ajour/> is the static site in `site/`: HTML and CSS, with its fonts and images in the same folder. Its only script, `clock.js`, shows the visitor's current date and time in the hero's menu bar.
+The landing page at <https://ajour.email/> is the static site in `site/`: HTML and CSS, with its fonts and images in the same folder. Its only script, `clock.js`, shows the visitor's current date and time in the hero's menu bar.
 
 - **Pull requests** that change `site/`, `scripts/check-site.py`, `scripts/clock.test.mjs`, or the workflow run the website check and the clock tests.
-- **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings.
+- **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings, with `ajour.email` as its custom domain. The domain's DNS points to GitHub Pages: A and AAAA records for the apex and a CNAME from `www` to `jonasdoebertin.github.io`. The domain is verified in the owner's GitHub account, so no other account can claim it for a Pages site.
 
 Run the check locally:
 
