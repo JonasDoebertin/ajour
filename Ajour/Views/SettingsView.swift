@@ -12,6 +12,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             group("Account") { account }
             group("General") { general }
+            if settings.offersUpdates {
+                group("Updates") { updates }
+            }
             group("About") { about }
         }
         .padding(24)
@@ -128,6 +131,26 @@ struct SettingsView: View {
             }
             .padding(.vertical, 8)
         }
+    }
+
+    @ViewBuilder private var updates: some View {
+        HStack {
+            Text("Install updates automatically")
+            Spacer()
+            Toggle("Install updates automatically", isOn: Binding(
+                get: { settings.installsUpdatesAutomatically },
+                set: { settings.setInstallsUpdatesAutomatically($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .padding(.vertical, 6)
+        Divider()
+        HStack {
+            Spacer()
+            Button("Check for Updates…") { settings.checkForUpdates() }
+        }
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder private var about: some View {

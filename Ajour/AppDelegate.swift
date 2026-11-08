@@ -36,12 +36,17 @@ import SwiftUI
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications
+        let updates = Self.makeUpdateController(
+            isQuiet: { appDelegate.object?.allowsUpdateRestart ?? false },
+            notifications: notifications
+        )
         let onboarding = OnboardingModel(
             appModel: model,
             launchAtLogin: .system,
+            updates: updates?.control,
             requestNotificationAuthorization: { await notifications.requestAuthorization() }
         )
-        let settings = SettingsModel(appModel: model, launchAtLogin: .system)
+        let settings = SettingsModel(appModel: model, launchAtLogin: .system, updates: updates?.control)
         let newAlias = NewAliasModel(appModel: model)
         let allAliases = AllAliasesModel(appModel: model)
         self.onboarding = onboarding
@@ -80,10 +85,6 @@ import SwiftUI
             onboarding.beginKeyReplacement()
             windows?.show(.onboarding)
         }
-        let updates = Self.makeUpdateController(
-            isQuiet: { appDelegate.object?.allowsUpdateRestart ?? false },
-            notifications: notifications
-        )
         windows.onWindowClosed = { [weak updates] in updates?.evaluatePendingInstall() }
         self.updates = updates
         super.init()

@@ -4,6 +4,7 @@ import SimpleLoginKit
 @MainActor @Observable final class SettingsModel {
     private(set) var launchAtLogin = false
     private(set) var launchAtLoginError: String?
+    private(set) var installsUpdatesAutomatically = true
     var signOutError: String?
     /// Set while sign-out is blocked by aliases that stay enabled, until the person signs out anyway or cancels.
     var blockedSignOut: SignOutError?
@@ -12,9 +13,27 @@ import SimpleLoginKit
     @ObservationIgnored private let appModel: AppModel
     @ObservationIgnored private let launchAtLoginControl: LaunchAtLoginControl
 
-    init(appModel: AppModel, launchAtLogin: LaunchAtLoginControl) {
+    @ObservationIgnored private let updates: UpdatesControl?
+
+    init(appModel: AppModel, launchAtLogin: LaunchAtLoginControl, updates: UpdatesControl?) {
         self.appModel = appModel
         launchAtLoginControl = launchAtLogin
+        self.updates = updates
+        installsUpdatesAutomatically = updates?.installsAutomatically() ?? true
+    }
+
+    /// Debug builds and the test host have no updater, so there is nothing to offer.
+    var offersUpdates: Bool {
+        updates != nil
+    }
+
+    func setInstallsUpdatesAutomatically(_ enabled: Bool) {
+        updates?.setInstallsAutomatically(enabled)
+        installsUpdatesAutomatically = updates?.installsAutomatically() ?? enabled
+    }
+
+    func checkForUpdates() {
+        updates?.checkForUpdates()
     }
 
     /// Retries the account load when it failed earlier, for example while offline at launch.

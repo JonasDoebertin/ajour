@@ -23,16 +23,24 @@ struct OnboardingProgress: Equatable {
 
     @ObservationIgnored private let appModel: AppModel
     @ObservationIgnored private let launchAtLogin: LaunchAtLoginControl
+    @ObservationIgnored private let updates: UpdatesControl?
     @ObservationIgnored private let requestNotificationAuthorization: @MainActor () async -> Void
 
     init(
         appModel: AppModel,
         launchAtLogin: LaunchAtLoginControl,
+        updates: UpdatesControl?,
         requestNotificationAuthorization: @escaping @MainActor () async -> Void
     ) {
         self.appModel = appModel
         self.launchAtLogin = launchAtLogin
+        self.updates = updates
         self.requestNotificationAuthorization = requestNotificationAuthorization
+    }
+
+    /// Debug builds and the test host have no updater, so there is nothing to ask.
+    var offersUpdates: Bool {
+        updates != nil
     }
 
     /// A launch-at-login failure keeps the window open, so the user reads why before closing it.
@@ -127,11 +135,12 @@ struct OnboardingProgress: Equatable {
 
     /// Completes setup even when launch at login can't be changed, for example with ad-hoc signing:
     /// the user can't fix that here, and Settings shows the actual state later.
-    func finish(launchAtLogin enabled: Bool) async {
+    func finish(launchAtLogin enabled: Bool, installsUpdatesAutomatically: Bool) async {
         guard !isFinishing, !isComplete else { return }
         isFinishing = true
         defer { isFinishing = false }
         errorMessage = nil
+        updates?.setInstallsAutomatically(installsUpdatesAutomatically)
         if enabled != launchAtLogin.isEnabled() {
             do {
                 try launchAtLogin.setEnabled(enabled)
