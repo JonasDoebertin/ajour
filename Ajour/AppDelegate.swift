@@ -149,22 +149,22 @@ import SwiftUI
         }
     }
 
-    /// Records of aliases that could not be disabled in time stay on disk for the next launch. A relaunch for an
-    /// update keeps every timer running instead, so its aliases stay enabled across the restart.
+    /// Records of aliases that could not be disabled in time stay on disk for the next launch.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if updates?.isRelaunchingForUpdate == true {
+        let plan = TerminationPlan(
+            isRelaunchingForUpdate: updates?.isRelaunchingForUpdate == true,
+            needsToDisableBeforeQuitting: model.needsToDisableBeforeQuitting
+        )
+        switch plan {
+        case .terminateNow:
+            return .terminateNow
+        case .prepare(let disablingTimedAliases):
             Task {
-                await model.prepareForTermination(disablingTimedAliases: false)
+                await model.prepareForTermination(disablingTimedAliases: disablingTimedAliases)
                 sender.reply(toApplicationShouldTerminate: true)
             }
             return .terminateLater
         }
-        guard model.needsToDisableBeforeQuitting else { return .terminateNow }
-        Task {
-            await model.prepareForTermination()
-            sender.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
     }
 
     private static func makeAppModel() -> AppModel {

@@ -51,12 +51,12 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
 
     func restartToUpdate() {
         pendingInstall.installNow()
-        stopQuietMomentChecksIfInstalling()
+        stopQuietMomentChecksUnlessScheduled()
     }
 
     func evaluatePendingInstall() {
         pendingInstall.evaluate()
-        stopQuietMomentChecksIfInstalling()
+        stopQuietMomentChecksUnlessScheduled()
     }
 
     var control: UpdatesControl {
@@ -67,10 +67,19 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         )
     }
 
-    private func stopQuietMomentChecksIfInstalling() {
-        guard pendingInstall.isInstalling else { return }
+    private func stopQuietMomentChecksUnlessScheduled() {
+        guard !pendingInstall.isScheduled else { return }
         quietMomentChecks?.invalidate()
         quietMomentChecks = nil
+    }
+
+    /// Once Sparkle's update driver ends while Ajour keeps running, an install it offered can no longer run and no
+    /// relaunch is coming. A successful relaunch never gets here, because Ajour has quit by then.
+    private func forgetEndedUpdate() {
+        pendingInstall.cancel()
+        stopQuietMomentChecksUnlessScheduled()
+        isRelaunchingForUpdate = false
+        if case .readyToInstall = menuState { menuState = .idle }
     }
 
     private func checkForQuietMomentRegularly() {
@@ -89,12 +98,20 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     ) -> Bool {
         menuState = .readyToInstall(version: item.displayVersionString)
         pendingInstall.schedule(immediateInstallHandler)
-        if !pendingInstall.isInstalling { checkForQuietMomentRegularly() }
+        if pendingInstall.isScheduled { checkForQuietMomentRegularly() }
         return true
     }
 
     func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
         isRelaunchingForUpdate = true
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+        forgetEndedUpdate()
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        forgetEndedUpdate()
     }
 
     // MARK: SPUStandardUserDriverDelegate
