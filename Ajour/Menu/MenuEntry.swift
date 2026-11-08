@@ -5,6 +5,9 @@ enum MenuAction: Equatable {
     case setUp
     case reEnterAPIKey
     case openSettings
+    case checkForUpdates
+    case showUpdate
+    case restartToUpdate
     case quit
     case createRandomAlias(expiringAfter: AliasDuration?)
     case openNewAlias
@@ -30,6 +33,8 @@ struct MenuState {
     var changes: [Int: AliasChange] = [:]
     var lastErrorIsNetwork = false
     var reducesMotion = false
+    /// Nil when this build can't update itself.
+    var updates: UpdateMenuState?
     var locale: Locale = .current
     var timeZone: TimeZone = .current
 }
@@ -100,8 +105,23 @@ indirect enum MenuEntry: Equatable {
             entries += aliasCreation
             entries += [.separator, .action("Settings…", .openSettings, symbol: "gearshape", shortcut: ","), .separator]
         }
+        entries += updateItem(state.updates)
         entries.append(.action("Quit", .quit, symbol: "power", shortcut: "q"))
         return entries
+    }
+
+    /// One item that swaps by state. Nothing checks while an update waits to be installed, so only the restart shows then.
+    private static func updateItem(_ updates: UpdateMenuState?) -> [MenuEntry] {
+        switch updates {
+        case nil:
+            []
+        case .idle:
+            [.action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath")]
+        case .available:
+            [.action("Update Available…", .showUpdate, symbol: "arrow.down.circle")]
+        case .readyToInstall:
+            [.action("Restart to Update", .restartToUpdate, symbol: "arrow.clockwise")]
+        }
     }
 
     private static func problems(_ state: MenuState) -> [MenuEntry] {

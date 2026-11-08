@@ -123,7 +123,7 @@ import SwiftUI
         if KeychainAccessCheck.isRequested { KeychainAccessCheck.run() }
         #endif
         model.start()
-        statusMenu = StatusMenuController(model: model, onboarding: onboarding, windows: windows)
+        statusMenu = StatusMenuController(model: model, onboarding: onboarding, windows: windows, updates: updates)
         updates?.start()
         followSession()
     }
