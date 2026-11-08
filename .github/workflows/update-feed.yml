@@ -1,0 +1,18 @@
+name: Update feed
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  actions: write
+
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    steps:
+      # The github-pages environment deploys only from main, so dispatch the website workflow there.
+      - name: Redeploy the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main --repo "$GITHUB_REPOSITORY"
