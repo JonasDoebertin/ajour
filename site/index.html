@@ -290,9 +290,9 @@
         <div class="split-content">
           <dl class="facts">
             <div><dt>An API key, never your password.</dt><dd>Ajour keeps it in your Keychain and nowhere else.</dd></div>
-            <div><dt>One destination.</dt><dd>Ajour only talks to app.simplelogin.io.</dd></div>
-            <div><dt>No analytics.</dt><dd>Ajour has no tracking and no third-party dependencies.</dd></div>
-            <div><dt>Sandboxed.</dt><dd>The App Sandbox allows outgoing network connections and nothing else.</dd></div>
+            <div><dt>Two destinations.</dt><dd>Ajour talks to app.simplelogin.io, and checks ajour.email for updates. Updates download from GitHub.</dd></div>
+            <div><dt>No analytics.</dt><dd>Ajour has no tracking. Its only third-party code is Sparkle, which installs updates, and an update check sends nothing about your Mac.</dd></div>
+            <div><dt>Sandboxed.</dt><dd>The App Sandbox allows outgoing network connections and the hand-off to Sparkle's installer, and nothing else.</dd></div>
             <div><dt>Signed and notarized.</dt><dd>Releases are signed with a Developer ID and notarized by Apple.</dd></div>
             <div><dt>Open source.</dt><dd>The code is on GitHub under the MIT license.</dd></div>
             <div class="honest-limit"><dt>Honest limit.</dt><dd>SimpleLogin can't disable an alias on a schedule, so the timers run on your Mac. If your Mac sleeps through the end of a timer, the alias stays enabled until it wakes and Ajour is running.</dd></div>

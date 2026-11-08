@@ -108,3 +108,15 @@ Use the zip of the first signed release, or the artifact of a manual run of the 
 2. `spctl -a -vv /Applications/Ajour.app` prints "accepted", "source=Notarized Developer ID" and "origin=Developer ID Application: Jonas Döbertin (KA74RG7337)".
 3. On the first launch after the update, macOS asks once whether Ajour may use its key in the Keychain. After Always Allow, the menu shows the pinned alias and the running timer, and no prompt asks to let Ajour access data from other apps.
 4. Install the next signed release the same way: it opens without any Keychain prompt.
+
+## Updates
+
+Run with Ajour 0.4.0 installed and 0.4.1 published.
+
+1. The scheduled check posts "Ajour 0.4.1 is available", no window pops up, and the menu shows "Update Available…". Clicking either opens Sparkle's window with the generated release notes.
+2. With automatic installs on, a timer started 2 minutes ago keeps "Restart to Update" in the menu. After the timer is 10 minutes old, with the menu and windows closed, Ajour restarts within a minute, and the timer shows the same end time.
+3. A login-code mail that arrives during the restart is reported once.
+4. Choosing "Restart to Update" installs at once.
+5. Quitting from the menu while an update waits disables timed aliases and installs the update without relaunching.
+6. Onboarding shows "Install updates automatically", checked; Settings shows the same setting.
+7. `log stream` shows no request to anything but `app.simplelogin.io`, `ajour.email` and GitHub.
