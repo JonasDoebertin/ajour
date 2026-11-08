@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import plistlib
 import subprocess
 import sys
@@ -13,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import appcast
 
-SPARKLE = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+SPARKLE = "{" + SPARKLE_NAMESPACE + "}"
 SCRIPT = Path(appcast.__file__).resolve()
 NOTES = "<p>a & b ]]> c</p>"
 RELEASE = {
@@ -41,7 +43,18 @@ def openssl_signs_ed25519():
 
 
 CAN_SIGN = openssl_signs_ed25519()
-needs_ed25519 = unittest.skipUnless(CAN_SIGN, "openssl lacks Ed25519 support (LibreSSL); CI runs these on Ubuntu")
+
+
+def needs_ed25519(test):
+    """Skips without Ed25519 locally (LibreSSL), but fails in CI, where a skip would hide every signing test."""
+    if CAN_SIGN:
+        return test
+    if os.environ.get("CI"):
+        def fail(self):
+            self.fail("openssl lacks Ed25519 support, which CI needs to test signing")
+        fail.__name__ = test.__name__
+        return fail
+    return unittest.skip("openssl lacks Ed25519 support (LibreSSL); CI runs these on Ubuntu")(test)
 
 
 def throwaway_key():
@@ -148,6 +161,9 @@ class AppcastTests(unittest.TestCase):
         self.key_file.write_text(seed + "\n")
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.output.read_text()
+        self.assertIn(f'xmlns:sparkle="{SPARKLE_NAMESPACE}"', text)
+        self.assertIn("<sparkle:version>57</sparkle:version>", text)
         channel = ElementTree.parse(self.output).getroot().find("channel")
         self.assertEqual(channel.findtext("title"), "Ajour")
         self.assertEqual(channel.findtext("link"), "https://ajour.email/")
