@@ -74,6 +74,14 @@ struct SettingsModelTests {
         #expect(!settings.installsUpdatesAutomatically)
     }
 
+    @Test func refreshReadsAnAutomaticInstallChoiceMadeElsewhere() {
+        updates.installsAutomatically = false
+
+        settings.refreshInstallsUpdatesAutomatically()
+
+        #expect(!settings.installsUpdatesAutomatically)
+    }
+
     @Test func checkForUpdatesReachesTheUpdater() {
         settings.checkForUpdates()
 

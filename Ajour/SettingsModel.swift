@@ -19,7 +19,7 @@ import SimpleLoginKit
         self.appModel = appModel
         launchAtLoginControl = launchAtLogin
         self.updates = updates
-        installsUpdatesAutomatically = updates?.installsAutomatically() ?? true
+        refreshInstallsUpdatesAutomatically()
     }
 
     /// Debug builds and the test host have no updater, so there is nothing to offer.
@@ -27,9 +27,13 @@ import SimpleLoginKit
         updates != nil
     }
 
+    func refreshInstallsUpdatesAutomatically() {
+        installsUpdatesAutomatically = updates?.installsAutomatically() ?? true
+    }
+
     func setInstallsUpdatesAutomatically(_ enabled: Bool) {
         updates?.setInstallsAutomatically(enabled)
-        installsUpdatesAutomatically = updates?.installsAutomatically() ?? enabled
+        refreshInstallsUpdatesAutomatically()
     }
 
     func checkForUpdates() {

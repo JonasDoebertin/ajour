@@ -19,7 +19,10 @@ struct SettingsView: View {
         }
         .padding(24)
         .frame(width: 420, alignment: .leading)
-        .onAppear { settings.refreshLaunchAtLogin() }
+        .onAppear {
+            settings.refreshLaunchAtLogin()
+            settings.refreshInstallsUpdatesAutomatically()
+        }
         .task { await settings.refreshAccount() }
         .alert("Sign Out of Ajour?", isPresented: $confirmsSignOut) {
             // Not marked destructive: an alert takes Return away from a destructive button.
