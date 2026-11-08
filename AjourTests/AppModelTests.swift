@@ -437,6 +437,67 @@ struct AppModelTests {
         #expect(test.timerStore.records.isEmpty)
     }
 
+    @Test func updateRestartKeepsRunningTimers() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+
+        await model.prepareForTermination(disablingTimedAliases: false)
+
+        #expect(test.timerStore.records.count == 1)
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 0)
+    }
+
+    @Test func updateRestartWaitsForEnablesInFlightAndKeepsTheirTimers() async throws {
+        let test = AppModelTests()
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await test.transport.waitUntilARequestIsHeld()
+
+        let restart = Task { await model.prepareForTermination(disablingTimedAliases: false) }
+        for _ in 0..<20 { await Task.yield() }
+        test.transport.release()
+        _ = await enable.value
+        await restart.value
+
+        #expect(test.timerStore.records.map(\.aliasID) == [7])
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 1)
+    }
+
+    @Test func updateRestartStopsTickWork() async throws {
+        let test = AppModelTests(records: [.running(aliasID: 7, at: TestClock().now)])
+        let model = try await test.signedInModel()
+        let forwardedAt = test.clock.now.addingTimeInterval(-5)
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, forwardedAt: forwardedAt))
+        var forwardedArrivals: [[MailArrival]] = []
+        model.onMailArrivals = { forwardedArrivals.append($0) }
+        model.scheduleTick()
+        await test.transport.waitUntilARequestIsHeld()
+
+        await model.prepareForTermination(disablingTimedAliases: false)
+        test.transport.release()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(forwardedArrivals.isEmpty)
+    }
+
+    @Test func isEnablingIsTrueWhileAnEnableRuns() async throws {
+        let test = AppModelTests()
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+        #expect(!model.isEnabling)
+
+        let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
+        await test.transport.waitUntilARequestIsHeld()
+        #expect(model.isEnabling)
+
+        test.transport.release()
+        _ = await enable.value
+        #expect(!model.isEnabling)
+    }
+
     @Test func signInResumesDisablesStoppedByARevokedKey() async throws {
         let test = AppModelTests(records: [.expired(aliasID: 7, at: TestClock().now)])
         let model = try await test.signedInModel()
