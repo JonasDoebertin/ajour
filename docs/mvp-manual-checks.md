@@ -114,9 +114,10 @@ Use the zip of the first signed release, or the artifact of a manual run of the 
 Run with Ajour 0.4.0 installed and 0.4.1 published.
 
 1. The scheduled check posts "Ajour 0.4.1 is available", no window pops up, and the menu shows "Update Available…". Clicking either opens Sparkle's window with the generated release notes.
-2. With automatic installs on, a timer started 2 minutes ago keeps "Restart to Update" in the menu. After the timer is 10 minutes old, with the menu and windows closed, Ajour restarts within a minute, and the timer shows the same end time.
+2. With automatic installs on, a timer started 2 minutes ago keeps "Restart to Update" in the menu. After the timer is 10 minutes old, with the menu and windows closed for a minute, Ajour restarts within another minute, and the timer shows the same end time. Settings shows "Restart to Update" instead of "Check for Updates…" while the update waits.
 3. A login-code mail that arrives during the restart is reported once.
 4. Choosing "Restart to Update" installs at once.
 5. Quitting from the menu while an update waits disables timed aliases and installs the update without relaunching.
-6. Onboarding shows "Install updates automatically", checked; Settings shows the same setting.
-7. `log stream` shows no request to anything but `app.simplelogin.io`, `ajour.email` and GitHub.
+6. Onboarding shows "Install updates automatically", checked; Settings shows the same setting. After turning it off in Settings and signing out, setting up again shows it unchecked.
+7. With an update waiting, turning off "Install updates automatically" and closing Settings keeps Ajour running with "Restart to Update" in the menu.
+8. `log stream` shows no request to anything but `app.simplelogin.io`, `ajour.email` and GitHub.

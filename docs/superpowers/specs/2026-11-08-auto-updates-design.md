@@ -49,12 +49,15 @@ The audience loves privacy. Every new network contact is said out loud on the we
 
 With automatic installs on, Sparkle downloads the update in the background. Ajour then installs and restarts at the first moment when:
 
-- no timer was started in the last 10 minutes, and
-- no Ajour window is open and the menu is not open.
+- no timer was started in the last 10 minutes,
+- no Ajour window is open and the menu is not open, and
+- the menu and every window have been closed for at least a minute. AppKit runs the action chosen in the menu after the menu closed, so an alias that is just being enabled or disabled has no timer or record to show for it yet.
+
+Turning automatic installs off while an update waits stops the automatic restart. "Restart to Update" and installing on quit still work.
 
 The remaining time of a timer doesn't matter, because timers survive the restart. What matters is whether someone is using Ajour right now: a fresh timer means they may be waiting for a login code.
 
-Ajour re-evaluates the condition when it changes (a timer starts or ends, a window or the menu opens or closes) and at least once a minute.
+Ajour checks the condition when the update is ready and once a minute while it waits.
 
 ### Timers across an update restart
 
@@ -70,8 +73,8 @@ If the relaunch fails, the aliases stay enabled until Ajour runs again, at the l
 
 ### Settings and onboarding
 
-- Settings gets an "Updates" group with "Check for Updates…" and the checkbox "Install updates automatically".
-- The onboarding finish step gets the same checkbox under "Launch at login", checked by default. Onboarding keeps its four steps.
+- Settings gets an "Updates" group with "Check for Updates…" and the checkbox "Install updates automatically". Like the menu, the button reads "Restart to Update" while a downloaded update waits, and it is disabled while Sparkle can't start a check, for example during a background download.
+- The onboarding finish step gets the same checkbox under "Launch at login", starting from the current setting, which is on by default. Onboarding keeps its four steps.
 - Ajour checks for updates once a day either way. The checkbox decides whether Ajour installs updates itself or only announces them. People updating from a version without Sparkle never see onboarding again; for them the default (on) applies silently.
 
 ### Feed and signing
@@ -90,7 +93,7 @@ If the relaunch fails, the aliases stay enabled until Ajour runs again, at the l
   - CI fails when `SUPublicEDKey` is missing or a placeholder.
   - The Pages job verifies the signature it just made against the `SUPublicEDKey` in the published app before it deploys. It fails instead of publishing a feed the installed apps can't verify.
 - The release keeps a single asset, `Ajour.zip`. No extra signature file is attached.
-- Updates are also checked against the Developer ID signature, which every release after 0.3.0 has.
+- The EdDSA signature is what proves an update comes from the owner. With `SUVerifyUpdateBeforeExtraction`, Sparkle also checks that the new app's code signature is valid, but not that it belongs to the same Developer ID team.
 
 ### Sandbox
 
