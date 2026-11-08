@@ -151,7 +151,13 @@ struct SettingsView: View {
         Divider()
         HStack {
             Spacer()
-            Button("Check for Updates…") { settings.checkForUpdates() }
+            switch settings.updateButton {
+            case .restartToUpdate:
+                Button("Restart to Update") { settings.restartToUpdate() }
+            case .checkForUpdates(let isEnabled):
+                Button("Check for Updates…") { settings.checkForUpdates() }
+                    .disabled(!isEnabled)
+            }
         }
         .padding(.vertical, 6)
     }

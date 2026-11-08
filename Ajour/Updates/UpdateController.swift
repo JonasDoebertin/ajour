@@ -21,6 +21,8 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     private(set) var menuState: UpdateMenuState = .idle
     /// Only a relaunch keeps timers running across the quit. Installing on a regular quit doesn't relaunch.
     private(set) var isRelaunchingForUpdate = false
+    /// Mirrors Sparkle's own flag, which turns false while an update session or a background download runs.
+    private(set) var canCheckForUpdates = false
 
     @ObservationIgnored var onUpdateFound: (String) -> Void = { _ in }
     @ObservationIgnored var onUpdateSeen: () -> Void = {}
@@ -31,6 +33,7 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         isQuiet: isQuiet
     )
     @ObservationIgnored private var quietMomentChecks: Timer?
+    @ObservationIgnored private var canCheckObservation: NSKeyValueObservation?
     @ObservationIgnored private lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: false,
         updaterDelegate: self,
@@ -44,8 +47,12 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         super.init()
     }
 
+    /// Sparkle changes `canCheckForUpdates` on the main thread.
     func start() {
         updater.automaticallyChecksForUpdates = true
+        canCheckObservation = updater.observe(\.canCheckForUpdates, options: [.initial]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshCanCheckForUpdates() }
+        }
         updaterController.startUpdater()
     }
 
@@ -63,8 +70,15 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         UpdatesControl(
             installsAutomatically: { [updater] in updater.automaticallyDownloadsUpdates },
             setInstallsAutomatically: { [updater] in updater.automaticallyDownloadsUpdates = $0 },
-            checkForUpdates: { [weak self] in self?.checkForUpdates() }
+            canCheckForUpdates: { [weak self] in self?.canCheckForUpdates ?? false },
+            checkForUpdates: { [weak self] in self?.checkForUpdates() },
+            menuState: { [weak self] in self?.menuState ?? .idle },
+            restartToUpdate: { [weak self] in self?.restartToUpdate() }
         )
+    }
+
+    private func refreshCanCheckForUpdates() {
+        canCheckForUpdates = updater.canCheckForUpdates
     }
 
     private func evaluatePendingInstall() {

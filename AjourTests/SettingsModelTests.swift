@@ -94,6 +94,47 @@ struct SettingsModelTests {
         #expect(!test.settings.offersUpdates)
     }
 
+    @Test func updateButtonChecksWhileTheUpdaterCan() {
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func updateButtonIsDisabledWhileTheUpdaterCannotCheck() {
+        updates.canCheckForUpdates = false
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: false))
+    }
+
+    @Test func updateButtonFollowsTheUpdaterWithoutARefresh() {
+        updates.canCheckForUpdates = false
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: false))
+
+        updates.canCheckForUpdates = true
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func updateButtonOffersARestartForADownloadedUpdate() {
+        updates.canCheckForUpdates = false
+        updates.menuState = .readyToInstall(version: "0.5.0")
+
+        #expect(settings.updateButton == .restartToUpdate)
+    }
+
+    @Test func updateButtonChecksForAnUpdateThatIsOnlyAvailable() {
+        updates.menuState = .available(version: "0.5.0")
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func restartToUpdateReachesTheUpdater() {
+        updates.menuState = .readyToInstall(version: "0.5.0")
+
+        settings.restartToUpdate()
+
+        #expect(updates.restarts == 1)
+        #expect(updates.checks == 0)
+    }
+
     @Test func refreshReadsTheLaunchAtLoginState() {
         launchAtLogin.isEnabled = true
 
