@@ -54,6 +54,23 @@ runs:
           | xcbeautify --renderer github-actions
         echo "app=build/DerivedData/Build/Products/Release/Ajour.app" >> "$GITHUB_OUTPUT"
 
+    - name: Re-sign Sparkle for Developer ID
+      if: inputs.team-id != ''
+      shell: bash
+      env:
+        APP: ${{ steps.build.outputs.app }}
+      run: |
+        set -euo pipefail
+        framework="$APP/Contents/Frameworks/Sparkle.framework"
+        sign=(codesign -f -s "Developer ID Application" --timestamp -o runtime)
+        "${sign[@]}" "$framework/Versions/B/XPCServices/Installer.xpc"
+        "${sign[@]}" --preserve-metadata=entitlements "$framework/Versions/B/XPCServices/Downloader.xpc"
+        "${sign[@]}" "$framework/Versions/B/Autoupdate"
+        "${sign[@]}" "$framework/Versions/B/Updater.app"
+        "${sign[@]}" "$framework"
+        "${sign[@]}" --preserve-metadata=entitlements "$APP"
+        codesign --verify --deep --strict "$APP"
+
     - name: Zip the app
       id: archive
       shell: bash

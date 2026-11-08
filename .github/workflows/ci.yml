@@ -23,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      - name: Check the update configuration
+        run: python3 -I scripts/check-update-config.py
       - uses: ./.github/actions/test
 
   # Builds a downloadable app for a pull request once the `build` label is added. The label is removed right
