@@ -73,7 +73,9 @@ jobs:
           api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
 
       # The website signs update feeds only for archives with this provenance.
-      - uses: actions/attest-build-provenance@v4
+      - name: Attest the build provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.build.outputs.archive }}
 

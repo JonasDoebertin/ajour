@@ -110,7 +110,7 @@ jobs:
           fi
 
           if ! gh attestation verify "$work/Ajour.zip" --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"; then
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$tag"; then
             echo "::error::Ajour.zip of release $tag has no valid build provenance, keeping the previous deployment"
             exit 1
           fi
