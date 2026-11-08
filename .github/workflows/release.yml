@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 defaults:
   run:
@@ -69,6 +71,11 @@ jobs:
           api-key: ${{ secrets.NOTARY_API_KEY }}
           api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
           api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
+
+      # The website signs update feeds only for archives with this provenance.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.build.outputs.archive }}
 
       # A rerun replaces the build on the existing draft instead of failing.
       - name: Attach the build to a draft release

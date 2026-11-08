@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   redeploy:
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
       # The github-pages environment deploys only from main, so dispatch the website workflow there.
