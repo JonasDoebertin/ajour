@@ -85,7 +85,6 @@ import SwiftUI
             onboarding.beginKeyReplacement()
             windows?.show(.onboarding)
         }
-        windows.onWindowClosed = { [weak updates] in updates?.evaluatePendingInstall() }
         self.updates = updates
         super.init()
         appDelegate.object = self
@@ -108,7 +107,8 @@ import SwiftUI
             now: .now,
             isEnabling: model.isEnabling,
             hasOpenWindow: windows.hasOpenWindow,
-            isMenuOpen: statusMenu?.isMenuOpen ?? false
+            isMenuOpen: statusMenu?.isMenuOpen ?? false,
+            lastInteractionAt: [statusMenu?.lastClosedAt, windows.lastClosedAt].compactMap(\.self).max()
         )
     }
 

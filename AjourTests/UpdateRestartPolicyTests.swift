@@ -10,14 +10,16 @@ struct UpdateRestartPolicyTests {
         timerStarts: [Date] = [],
         isEnabling: Bool = false,
         hasOpenWindow: Bool = false,
-        isMenuOpen: Bool = false
+        isMenuOpen: Bool = false,
+        lastInteractionAt: Date? = nil
     ) -> Bool {
         UpdateRestartPolicy.allowsRestart(
             timerStarts: timerStarts,
             now: now,
             isEnabling: isEnabling,
             hasOpenWindow: hasOpenWindow,
-            isMenuOpen: isMenuOpen
+            isMenuOpen: isMenuOpen,
+            lastInteractionAt: lastInteractionAt
         )
     }
 
@@ -51,5 +53,21 @@ struct UpdateRestartPolicyTests {
 
     @Test func oneFreshTimerAmongOldOnesBlocksRestart() {
         #expect(!allowsRestart(timerStarts: [now - 3600, now - 120]))
+    }
+
+    @Test func interactionHalfAMinuteAgoBlocksRestart() {
+        #expect(!allowsRestart(lastInteractionAt: now - 30))
+    }
+
+    @Test func interactionAMinuteAgoAllowsRestart() {
+        #expect(allowsRestart(lastInteractionAt: now - 60))
+    }
+
+    @Test func noInteractionAllowsRestart() {
+        #expect(allowsRestart(lastInteractionAt: nil))
+    }
+
+    @Test func interactionInTheFutureBlocksRestart() {
+        #expect(!allowsRestart(lastInteractionAt: now + 60))
     }
 }

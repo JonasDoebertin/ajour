@@ -16,6 +16,8 @@ import Observation
     private var liveUpdates: Timer?
     private var iconUpdates: Task<Void, Never>?
     private(set) var isMenuOpen = false
+    /// AppKit usually sends the chosen item's action after the menu closed, so the action may still be starting.
+    private(set) var lastClosedAt: Date?
 
     init(model: AppModel, onboarding: OnboardingModel, windows: WindowCoordinator, updates: UpdateController?) {
         self.model = model
@@ -56,7 +58,7 @@ import Observation
         liveUpdates?.invalidate()
         liveUpdates = nil
         renderer.resetHighlight()
-        updates?.evaluatePendingInstall()
+        lastClosedAt = .now
     }
 
     private func showCurrentEntries() {

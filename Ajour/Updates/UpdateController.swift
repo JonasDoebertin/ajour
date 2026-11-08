@@ -3,7 +3,8 @@ import Observation
 import Sparkle
 
 /// Connects Sparkle to Ajour. Scheduled checks never open a window: an update found in the background is
-/// announced by a notification and the menu, and a downloaded update waits for a quiet moment to restart Ajour.
+/// announced by a notification and the menu, and a downloaded update waits for a quiet moment to restart Ajour,
+/// as long as updates install automatically.
 @MainActor @Observable
 final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     private static let quietMomentCheckInterval: TimeInterval = 60
@@ -24,7 +25,11 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     @ObservationIgnored var onUpdateFound: (String) -> Void = { _ in }
     @ObservationIgnored var onUpdateSeen: () -> Void = {}
 
-    @ObservationIgnored private let pendingInstall: PendingUpdateInstall
+    @ObservationIgnored private let isQuiet: () -> Bool
+    @ObservationIgnored private lazy var pendingInstall = PendingUpdateInstall(
+        installsAutomatically: { [unowned self] in updater.automaticallyDownloadsUpdates },
+        isQuiet: isQuiet
+    )
     @ObservationIgnored private var quietMomentChecks: Timer?
     @ObservationIgnored private lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: false,
@@ -35,7 +40,7 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
     private var updater: SPUUpdater { updaterController.updater }
 
     init(isQuiet: @escaping () -> Bool) {
-        pendingInstall = PendingUpdateInstall(isQuiet: isQuiet)
+        self.isQuiet = isQuiet
         super.init()
     }
 
@@ -54,17 +59,17 @@ final class UpdateController: NSObject, SPUUpdaterDelegate, @preconcurrency SPUS
         stopQuietMomentChecksUnlessScheduled()
     }
 
-    func evaluatePendingInstall() {
-        pendingInstall.evaluate()
-        stopQuietMomentChecksUnlessScheduled()
-    }
-
     var control: UpdatesControl {
         UpdatesControl(
             installsAutomatically: { [updater] in updater.automaticallyDownloadsUpdates },
             setInstallsAutomatically: { [updater] in updater.automaticallyDownloadsUpdates = $0 },
             checkForUpdates: { [weak self] in self?.checkForUpdates() }
         )
+    }
+
+    private func evaluatePendingInstall() {
+        pendingInstall.evaluate()
+        stopQuietMomentChecksUnlessScheduled()
     }
 
     private func stopQuietMomentChecksUnlessScheduled() {
