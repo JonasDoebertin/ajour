@@ -91,14 +91,15 @@ class AppcastTests(unittest.TestCase):
             archive.writestr("Ajour.app/Contents/Info.plist", plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
             archive.writestr("Ajour.app/Contents/MacOS/Ajour", b"binary")
 
-    def run_cli(self):
+    def run_cli(self, *arguments):
         return subprocess.run(
-            [
-                sys.executable, "-I", str(SCRIPT),
-                "--release", str(self.release), "--notes", str(self.notes), "--archive", str(self.archive),
-                "--key-file", str(self.key_file), "--output", str(self.output),
-            ],
-            capture_output=True, text=True,
+            [sys.executable, "-I", str(SCRIPT), *arguments], capture_output=True, text=True,
+        )
+
+    def run_feed_cli(self):
+        return self.run_cli(
+            "--release", str(self.release), "--notes", str(self.notes), "--archive", str(self.archive),
+            "--key-file", str(self.key_file), "--output", str(self.output),
         )
 
     def test_readsVersionsAndKeyFromTheArchive(self):
@@ -112,10 +113,35 @@ class AppcastTests(unittest.TestCase):
     def test_archiveWithoutPublicKeyIsSkipped(self):
         self.write_archive()
         self.key_file.write_text("irrelevant")
-        result = self.run_cli()
+        result = self.run_feed_cli()
         self.assertEqual(result.returncode, 3, result.stderr)
         self.assertIn("SUPublicEDKey", result.stdout)
         self.assertFalse(self.output.exists())
+
+    def test_checkOnlySkipsAnArchiveWithoutPublicKey(self):
+        self.write_archive()
+        result = self.run_cli("--check-only", "--archive", str(self.archive))
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("SUPublicEDKey", result.stdout)
+        self.assertFalse(self.output.exists())
+
+    def test_checkOnlyAcceptsAnArchiveWithPublicKey(self):
+        self.write_archive(public_key="cHVibGlj")
+        result = self.run_cli("--check-only", "--archive", str(self.archive))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_checkOnlyFailsForAnUnreadableArchive(self):
+        self.archive.write_bytes(b"not a zip")
+        result = self.run_cli("--check-only", "--archive", str(self.archive))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot read", result.stderr)
+
+    def test_buildingTheFeedNeedsAllItsArguments(self):
+        self.write_archive()
+        result = self.run_cli("--archive", str(self.archive), "--output", str(self.output))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--release, --notes, --key-file", result.stderr)
 
     @needs_ed25519
     def test_signatureVerifiesWithTheMatchingKey(self):
@@ -139,7 +165,7 @@ class AppcastTests(unittest.TestCase):
         _, other_public = throwaway_key()
         self.write_archive(public_key=other_public)
         self.key_file.write_text(seed + "\n")
-        result = self.run_cli()
+        result = self.run_feed_cli()
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertNotIn(seed, result.stdout + result.stderr)
         self.assertFalse(self.output.exists())
@@ -149,7 +175,7 @@ class AppcastTests(unittest.TestCase):
         _, public = throwaway_key()
         self.write_archive(public_key=public)
         self.key_file.write_text(base64.b64encode(b"short").decode())
-        result = self.run_cli()
+        result = self.run_feed_cli()
         self.assertEqual(result.returncode, 1)
         self.assertIn("SPARKLE_PRIVATE_KEY must be the base64 32-byte seed from generate_keys -x", result.stderr + result.stdout)
         self.assertFalse(self.output.exists())
@@ -159,7 +185,7 @@ class AppcastTests(unittest.TestCase):
         seed, public = throwaway_key()
         self.write_archive(public_key=public)
         self.key_file.write_text(seed + "\n")
-        result = self.run_cli()
+        result = self.run_feed_cli()
         self.assertEqual(result.returncode, 0, result.stderr)
         text = self.output.read_text()
         self.assertIn(f'xmlns:sparkle="{SPARKLE_NAMESPACE}"', text)
@@ -189,7 +215,7 @@ class AppcastTests(unittest.TestCase):
         seed, public = throwaway_key()
         self.write_archive(public_key=public)
         self.key_file.write_text(seed)
-        self.assertEqual(self.run_cli().returncode, 0)
+        self.assertEqual(self.run_feed_cli().returncode, 0)
         root = ElementTree.fromstring(self.output.read_text())
         self.assertEqual(root.find("channel/item/description").text, NOTES)
         self.assertNotIn("CDATA", self.output.read_text())

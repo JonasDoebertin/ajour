@@ -91,6 +91,20 @@ jobs:
           jq -r '.body // ""' "$work/release.json" \
             | gh api markdown -F text=@- -f mode=gfm -f context="$GITHUB_REPOSITORY" > "$work/notes.html"
 
+          # Ajour.zip is read with the signing key only once its provenance checks out. Without provenance, it is
+          # read without the key, just to let a release from before updates through with a warning.
+          if ! gh attestation verify "$work/Ajour.zip" --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$tag"; then
+            status=0
+            env -u SPARKLE_PRIVATE_KEY python3 -I scripts/appcast.py --check-only --archive "$work/Ajour.zip" || status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "::warning::Release $tag has no Sparkle update key, deploying without an update feed"
+              exit 0
+            fi
+            echo "::error::Ajour.zip of release $tag has no valid build provenance, keeping the previous deployment"
+            exit 1
+          fi
+
           key_file="$RUNNER_TEMP/sparkle.key"
           trap 'rm -f "$key_file"' EXIT
           (umask 077; printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_file")
@@ -107,12 +121,6 @@ jobs:
             exit 0
           elif [ "$status" -ne 0 ]; then
             exit "$status"
-          fi
-
-          if ! gh attestation verify "$work/Ajour.zip" --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$tag"; then
-            echo "::error::Ajour.zip of release $tag has no valid build provenance, keeping the previous deployment"
-            exit 1
           fi
           cp "$work/appcast.xml" build/pages/appcast.xml
       - uses: actions/upload-pages-artifact@v5
