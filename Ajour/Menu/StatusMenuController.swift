@@ -14,6 +14,7 @@ import Observation
     private lazy var renderer = MenuRenderer(menu: menu) { [weak self] in self?.perform($0) }
     private var liveUpdates: Timer?
     private var iconUpdates: Task<Void, Never>?
+    private(set) var isMenuOpen = false
 
     init(model: AppModel, onboarding: OnboardingModel, windows: WindowCoordinator) {
         self.model = model
@@ -35,6 +36,7 @@ import Observation
 
     /// Menu tracking runs the run loop in its own mode, so the timer is added for all common modes.
     func menuWillOpen(_ menu: NSMenu) {
+        isMenuOpen = true
         Task { await model.refreshPinned() }
         let timer = Timer(timeInterval: Self.liveUpdateInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.showCurrentEntries() }
@@ -48,6 +50,7 @@ import Observation
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        isMenuOpen = false
         liveUpdates?.invalidate()
         liveUpdates = nil
         renderer.resetHighlight()

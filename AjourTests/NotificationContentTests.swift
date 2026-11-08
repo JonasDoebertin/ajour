@@ -126,6 +126,16 @@ struct NotificationContentFactoryTests {
         #expect(content.body == "travel@alexmorgan.example is on the clipboard.")
         #expect(content.categoryIdentifier == "")
     }
+
+    @Test func updateAvailableContent() {
+        let content = NotificationContent.updateAvailable(version: "0.5.0")
+
+        #expect(content.identifier == "update-available")
+        #expect(content.title == "Ajour 0.5.0 is available")
+        #expect(content.body == "See what’s new and install it.")
+        #expect(content.categoryIdentifier == NotificationIdentifier.updateAvailableCategory)
+        #expect(content.playsSound == false)
+    }
 }
 
 struct NotificationResponseRouterTests {
