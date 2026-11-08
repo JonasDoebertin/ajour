@@ -455,13 +455,18 @@ struct AppModelTests {
         let enable = Task { await model.enable(aliasID: 7, for: .oneHour) }
         await test.transport.waitUntilARequestIsHeld()
 
-        let restart = Task { await model.prepareForTermination(disablingTimedAliases: false) }
+        var restartFinished = false
+        let restart = Task {
+            await model.prepareForTermination(disablingTimedAliases: false)
+            restartFinished = true
+        }
         for _ in 0..<20 { await Task.yield() }
-        test.transport.release()
-        _ = await enable.value
-        await restart.value
+        #expect(!restartFinished)
 
+        test.transport.release()
+        await restart.value
         #expect(test.timerStore.records.map(\.aliasID) == [7])
+        _ = await enable.value
         #expect(test.requestCount(path: "/api/aliases/7/toggle") == 1)
     }
 
