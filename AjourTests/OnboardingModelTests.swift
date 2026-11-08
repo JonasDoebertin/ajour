@@ -233,6 +233,19 @@ struct OnboardingModelTests {
         #expect(updates.appliedSettings == [false])
     }
 
+    @Test func automaticInstallChoiceStartsFromTheCurrentSetting() {
+        updates.installsAutomatically = false
+
+        #expect(!onboarding.installsUpdatesAutomatically)
+    }
+
+    @Test func automaticInstallChoiceStartsOnWithoutUpdater() {
+        let test = OnboardingModelTests(offersUpdates: false)
+        test.updates.installsAutomatically = false
+
+        #expect(test.onboarding.installsUpdatesAutomatically)
+    }
+
     @Test func finishingWithoutUpdaterIgnoresTheChoice() async {
         let test = OnboardingModelTests(offersUpdates: false)
         let onboarding = await test.confirmedOnboarding()

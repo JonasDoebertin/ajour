@@ -43,6 +43,11 @@ struct OnboardingProgress: Equatable {
         updates != nil
     }
 
+    /// Starts the last step from the current choice, so setting up again after signing out keeps it.
+    var installsUpdatesAutomatically: Bool {
+        updates?.installsAutomatically() ?? true
+    }
+
     /// A launch-at-login failure keeps the window open, so the user reads why before closing it.
     var closesWindow: Bool {
         isComplete && errorMessage == nil

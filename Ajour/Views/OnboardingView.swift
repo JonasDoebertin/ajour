@@ -31,6 +31,7 @@ struct OnboardingView: View {
         }
         .onChange(of: model.step, initial: true) {
             offerClipboardKey()
+            if model.step == .finish { installsUpdatesAutomatically = model.installsUpdatesAutomatically }
         }
         .onChange(of: model.closesWindow) { _, closesWindow in
             if closesWindow { close() }
@@ -39,7 +40,6 @@ struct OnboardingView: View {
             model.reset()
             clipboardKey = nil
             launchAtLogin = true
-            installsUpdatesAutomatically = true
         }
     }
 
