@@ -42,6 +42,12 @@ runs:
         scripts/build-dmg.sh "$APP" "$path"
         echo "path=$path" >> "$GITHUB_OUTPUT"
 
+    - name: Check the app in the disk image
+      shell: bash
+      env:
+        IMAGE: ${{ steps.build.outputs.path }}
+      run: scripts/verify-dmg-app.sh "$IMAGE"
+
     - name: Sign the disk image
       shell: bash
       env:
