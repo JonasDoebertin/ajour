@@ -121,3 +121,12 @@ Run with Ajour 0.4.0 installed and 0.4.1 published.
 6. Onboarding shows "Install updates automatically", checked; Settings shows the same setting. After turning it off in Settings and signing out, setting up again shows it unchecked.
 7. With an update waiting, turning off "Install updates automatically" and closing Settings keeps Ajour running with "Restart to Update" in the menu.
 8. `log stream` shows no request to anything but `app.simplelogin.io`, `ajour.email` and GitHub.
+
+## Disk image
+
+Run with `Ajour.dmg` from a release.
+
+1. Opening the disk image shows a window with the petrol background, Ajour on the left, Applications on the right and the dotted arrow between them. The background fills the window without scroll bars.
+2. The names below the icons are readable in Light and in Dark Mode.
+3. Dragging Ajour onto Applications installs it, and the installed app opens without a Gatekeeper warning.
+4. `spctl --assess --type open --context context:primary-signature -v Ajour.dmg` reports "Notarized Developer ID".

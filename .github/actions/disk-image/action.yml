@@ -1,0 +1,84 @@
+name: Disk image
+description: >-
+  Puts the stapled app into Ajour's disk image, signs the image with the Developer ID, has Apple notarize it,
+  staples the ticket, and checks that Gatekeeper accepts it.
+
+inputs:
+  app:
+    description: Path of the signed, notarized and stapled app
+    required: true
+  name:
+    description: File name of the disk image, without extension
+    required: true
+  team-id:
+    description: Team that must have signed the disk image
+    required: true
+  api-key:
+    description: App Store Connect API key as a base64-encoded .p8
+    required: true
+  api-key-id:
+    description: ID of the API key
+    required: true
+  api-issuer-id:
+    description: Issuer ID of the API key
+    required: true
+
+outputs:
+  path:
+    description: Path of the disk image
+    value: ${{ steps.build.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build the disk image
+      id: build
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+        NAME: ${{ inputs.name }}
+      run: |
+        path="build/$NAME.dmg"
+        scripts/build-dmg.sh "$APP" "$path"
+        echo "path=$path" >> "$GITHUB_OUTPUT"
+
+    - name: Sign the disk image
+      shell: bash
+      env:
+        IMAGE: ${{ steps.build.outputs.path }}
+        TEAM_ID: ${{ inputs.team-id }}
+      run: |
+        codesign --sign "Developer ID Application" --timestamp "$IMAGE"
+        details="$(codesign --display --verbose=2 "$IMAGE" 2>&1)"
+        echo "$details"
+        if ! grep -qx "TeamIdentifier=$TEAM_ID" <<< "$details"; then
+          echo "::error::The disk image is not signed by team $TEAM_ID."
+          exit 1
+        fi
+        if ! grep -q "^Timestamp=" <<< "$details"; then
+          echo "::error::The disk image's signature has no secure timestamp."
+          exit 1
+        fi
+
+    - name: Notarize the disk image
+      uses: ./.github/actions/submit-for-notarization
+      with:
+        file: ${{ steps.build.outputs.path }}
+        subject: the disk image
+        api-key: ${{ inputs.api-key }}
+        api-key-id: ${{ inputs.api-key-id }}
+        api-issuer-id: ${{ inputs.api-issuer-id }}
+
+    - name: Staple and check the disk image
+      shell: bash
+      env:
+        IMAGE: ${{ steps.build.outputs.path }}
+      run: |
+        xcrun stapler staple "$IMAGE"
+        xcrun stapler validate "$IMAGE"
+        assessment="$(spctl --assess --type open --context context:primary-signature --verbose=4 "$IMAGE" 2>&1)" || true
+        echo "$assessment"
+        if ! grep -q "source=Notarized Developer ID" <<< "$assessment"; then
+          echo "::error::Gatekeeper does not accept the disk image as notarized."
+          exit 1
+        fi
