@@ -184,6 +184,33 @@ final class TestClock: @unchecked Sendable {
     }
 }
 
+@MainActor final class FakeUpdates {
+    var installsAutomatically: Bool
+    var canCheckForUpdates = true
+    var menuState: UpdateMenuState = .idle
+    private(set) var appliedSettings: [Bool] = []
+    private(set) var checks = 0
+    private(set) var restarts = 0
+
+    init(installsAutomatically: Bool = true) {
+        self.installsAutomatically = installsAutomatically
+    }
+
+    var control: UpdatesControl {
+        UpdatesControl(
+            installsAutomatically: { self.installsAutomatically },
+            setInstallsAutomatically: { enabled in
+                self.appliedSettings.append(enabled)
+                self.installsAutomatically = enabled
+            },
+            canCheckForUpdates: { self.canCheckForUpdates },
+            checkForUpdates: { self.checks += 1 },
+            menuState: { self.menuState },
+            restartToUpdate: { self.restarts += 1 }
+        )
+    }
+}
+
 struct LaunchAtLoginRefused: LocalizedError {
     var errorDescription: String? { "Operation not permitted" }
 }

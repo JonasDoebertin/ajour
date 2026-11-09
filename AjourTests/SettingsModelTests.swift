@@ -8,6 +8,7 @@ struct SettingsModelTests {
     let keyStore: InMemoryAPIKeyStore
     let transport = StubTransport()
     let launchAtLogin: FakeLaunchAtLogin
+    let updates: FakeUpdates
     let appModel: AppModel
     let settings: SettingsModel
 
@@ -15,12 +16,15 @@ struct SettingsModelTests {
         keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(),
         records: [TimerRecord] = [],
         timerStore: (any TimerStore)? = nil,
-        launchAtLogin: FakeLaunchAtLogin = FakeLaunchAtLogin()
+        launchAtLogin: FakeLaunchAtLogin = FakeLaunchAtLogin(),
+        updates: FakeUpdates = FakeUpdates(),
+        offersUpdates: Bool = true
     ) {
         self.keyStore = keyStore
         self.launchAtLogin = launchAtLogin
+        self.updates = updates
         appModel = AppModel(keyStore: keyStore, timerStore: timerStore ?? InMemoryTimerStore(records: records), transport: transport, retry: .once)
-        settings = SettingsModel(appModel: appModel, launchAtLogin: launchAtLogin.control)
+        settings = SettingsModel(appModel: appModel, launchAtLogin: launchAtLogin.control, updates: offersUpdates ? updates.control : nil)
     }
 
     func signIn() async throws {
@@ -54,6 +58,81 @@ struct SettingsModelTests {
         await settings.refreshAccount()
 
         #expect(transport.requests.isEmpty)
+    }
+
+    @Test func settingsReflectAutomaticInstalls() {
+        let test = SettingsModelTests(updates: FakeUpdates(installsAutomatically: false))
+
+        #expect(test.settings.offersUpdates)
+        #expect(!test.settings.installsUpdatesAutomatically)
+    }
+
+    @Test func turningOffAutomaticInstallsReachesTheUpdater() {
+        settings.setInstallsUpdatesAutomatically(false)
+
+        #expect(updates.appliedSettings == [false])
+        #expect(!settings.installsUpdatesAutomatically)
+    }
+
+    @Test func refreshReadsAnAutomaticInstallChoiceMadeElsewhere() {
+        updates.installsAutomatically = false
+
+        settings.refreshInstallsUpdatesAutomatically()
+
+        #expect(!settings.installsUpdatesAutomatically)
+    }
+
+    @Test func checkForUpdatesReachesTheUpdater() {
+        settings.checkForUpdates()
+
+        #expect(updates.checks == 1)
+    }
+
+    @Test func noUpdatesWithoutUpdater() {
+        let test = SettingsModelTests(offersUpdates: false)
+
+        #expect(!test.settings.offersUpdates)
+    }
+
+    @Test func updateButtonChecksWhileTheUpdaterCan() {
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func updateButtonIsDisabledWhileTheUpdaterCannotCheck() {
+        updates.canCheckForUpdates = false
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: false))
+    }
+
+    @Test func updateButtonFollowsTheUpdaterWithoutARefresh() {
+        updates.canCheckForUpdates = false
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: false))
+
+        updates.canCheckForUpdates = true
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func updateButtonOffersARestartForADownloadedUpdate() {
+        updates.canCheckForUpdates = false
+        updates.menuState = .readyToInstall(version: "0.5.0")
+
+        #expect(settings.updateButton == .restartToUpdate)
+    }
+
+    @Test func updateButtonChecksForAnUpdateThatIsOnlyAvailable() {
+        updates.menuState = .available(version: "0.5.0")
+
+        #expect(settings.updateButton == .checkForUpdates(isEnabled: true))
+    }
+
+    @Test func restartToUpdateReachesTheUpdater() {
+        updates.menuState = .readyToInstall(version: "0.5.0")
+
+        settings.restartToUpdate()
+
+        #expect(updates.restarts == 1)
+        #expect(updates.checks == 0)
     }
 
     @Test func refreshReadsTheLaunchAtLoginState() {

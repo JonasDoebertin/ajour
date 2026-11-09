@@ -6,6 +6,9 @@ options:
 packages:
   SimpleLoginKit:
     path: Packages/SimpleLoginKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -20,6 +23,7 @@ targets:
       - Ajour
     dependencies:
       - package: SimpleLoginKit
+      - package: Sparkle
     info:
       path: Ajour/Info.plist
       properties:
@@ -27,11 +31,22 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
+        SUFeedURL: https://ajour.email/appcast.xml
+        SUPublicEDKey: 0TX6AhoELPJyL2o0OLpgBSicKhskfJ7TEy+x/7+jUYA=
+        SUEnableInstallerLauncherService: true
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
+        SUScheduledCheckInterval: 86400
+        SUEnableSystemProfiling: false
+        SUVerifyUpdateBeforeExtraction: true
     entitlements:
       path: Ajour/Ajour.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
     settings:
       base:
         PRODUCT_NAME: Ajour

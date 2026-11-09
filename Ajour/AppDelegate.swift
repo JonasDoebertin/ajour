@@ -10,17 +10,20 @@ import SwiftUI
     let allAliases: AllAliasesModel
     let notifications: NotificationController
     let windows: WindowCoordinator
+    let updates: UpdateController?
     private var statusMenu: StatusMenuController?
 
     override init() {
         let model = Self.makeAppModel()
+        let appDelegate = WeakReference<AppDelegate>()
         let notifications = NotificationController(
             onDisableRequested: { aliasID in
                 Task { await model.disableNow(aliasID: aliasID) }
             },
             onRetryRequested: { aliasID in
                 Task { await model.retryDisable(aliasID: aliasID) }
-            }
+            },
+            onUpdateRequested: { appDelegate.object?.updates?.checkForUpdates() }
         )
         model.onMailArrivals = { arrivals in
             for arrival in arrivals {
@@ -33,12 +36,17 @@ import SwiftUI
         model.onNewAliasCopied = { notifications.postCopied(email: $0) }
         self.model = model
         self.notifications = notifications
+        let updates = Self.makeUpdateController(
+            isQuiet: { appDelegate.object?.allowsUpdateRestart ?? false },
+            notifications: notifications
+        )
         let onboarding = OnboardingModel(
             appModel: model,
             launchAtLogin: .system,
+            updates: updates?.control,
             requestNotificationAuthorization: { await notifications.requestAuthorization() }
         )
-        let settings = SettingsModel(appModel: model, launchAtLogin: .system)
+        let settings = SettingsModel(appModel: model, launchAtLogin: .system, updates: updates?.control)
         let newAlias = NewAliasModel(appModel: model)
         let allAliases = AllAliasesModel(appModel: model)
         self.onboarding = onboarding
@@ -77,7 +85,31 @@ import SwiftUI
             onboarding.beginKeyReplacement()
             windows?.show(.onboarding)
         }
+        self.updates = updates
         super.init()
+        appDelegate.object = self
+    }
+
+    private static func makeUpdateController(
+        isQuiet: @escaping () -> Bool,
+        notifications: NotificationController
+    ) -> UpdateController? {
+        guard UpdateController.isSupported, !isHostingUnitTests else { return nil }
+        let updates = UpdateController(isQuiet: isQuiet)
+        updates.onUpdateFound = { notifications.postUpdateAvailable(version: $0) }
+        updates.onUpdateSeen = { notifications.removeUpdateNotification() }
+        return updates
+    }
+
+    private var allowsUpdateRestart: Bool {
+        UpdateRestartPolicy.allowsRestart(
+            timerStarts: model.engine.records.map(\.enabledAt),
+            now: .now,
+            isEnabling: model.isEnabling,
+            hasOpenWindow: windows.hasOpenWindow,
+            isMenuOpen: statusMenu?.isMenuOpen ?? false,
+            lastInteractionAt: [statusMenu?.lastClosedAt, windows.lastClosedAt].compactMap(\.self).max()
+        )
     }
 
     /// A click on a notification that launches the app is delivered only to a delegate set this early.
@@ -92,7 +124,8 @@ import SwiftUI
         if KeychainAccessCheck.isRequested { KeychainAccessCheck.run() }
         #endif
         model.start()
-        statusMenu = StatusMenuController(model: model, onboarding: onboarding, windows: windows)
+        statusMenu = StatusMenuController(model: model, onboarding: onboarding, windows: windows, updates: updates)
+        updates?.start()
         followSession()
     }
 
@@ -119,12 +152,20 @@ import SwiftUI
 
     /// Records of aliases that could not be disabled in time stay on disk for the next launch.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model.needsToDisableBeforeQuitting else { return .terminateNow }
-        Task {
-            await model.prepareForTermination()
-            sender.reply(toApplicationShouldTerminate: true)
+        let plan = TerminationPlan(
+            isRelaunchingForUpdate: updates?.isRelaunchingForUpdate == true,
+            needsToDisableBeforeQuitting: model.needsToDisableBeforeQuitting
+        )
+        switch plan {
+        case .terminateNow:
+            return .terminateNow
+        case .prepare(let disablingTimedAliases):
+            Task {
+                await model.prepareForTermination(disablingTimedAliases: disablingTimedAliases)
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
         }
-        return .terminateLater
     }
 
     private static func makeAppModel() -> AppModel {
@@ -146,6 +187,11 @@ import SwiftUI
     private static var isHostingUnitTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
+}
+
+/// Lets closures made before `AppDelegate` finishes initializing reach it later without keeping it alive.
+private final class WeakReference<Object: AnyObject> {
+    weak var object: Object?
 }
 
 /// Stands in when the timer file's location can't be determined, so the menu reports

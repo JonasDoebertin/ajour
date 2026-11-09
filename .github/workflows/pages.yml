@@ -7,12 +7,16 @@ on:
       - site/**
       - scripts/check-site.py
       - scripts/clock.test.mjs
+      - scripts/appcast.py
+      - scripts/appcast_test.py
       - .github/workflows/pages.yml
   pull_request:
     paths:
       - site/**
       - scripts/check-site.py
       - scripts/clock.test.mjs
+      - scripts/appcast.py
+      - scripts/appcast_test.py
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -28,12 +32,16 @@ jobs:
         run: python3 -I scripts/check-site.py site
       - name: Test the menu bar clock
         run: node --test scripts/clock.test.mjs
+      - name: Test the update feed builder
+        run: python3 -I scripts/appcast_test.py
 
   deploy:
     needs: check
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
+      attestations: read
       pages: write
       id-token: write
     environment:
@@ -45,8 +53,78 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      - name: Copy the website
+        run: |
+          mkdir -p build/pages
+          cp -R site/. build/pages
+      - name: Build the update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/feed"
+          mkdir -p "$work"
+
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "::warning::SPARKLE_PRIVATE_KEY is empty, deploying without an update feed"
+            exit 0
+          fi
+
+          status=0
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$work/release.json" 2> "$work/api-error.txt" || status=$?
+          if [ "$status" -ne 0 ]; then
+            if grep -q "HTTP 404" "$work/api-error.txt"; then
+              echo "::warning::No published release, deploying without an update feed"
+              exit 0
+            fi
+            cat "$work/api-error.txt"
+            exit "$status"
+          fi
+
+          tag=$(jq -r .tag_name "$work/release.json")
+          if ! jq -e '.assets | any(.name == "Ajour.zip")' "$work/release.json" > /dev/null; then
+            echo "::warning::Release $tag has no Ajour.zip, deploying without an update feed"
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern Ajour.zip --dir "$work"
+          jq -r '.body // ""' "$work/release.json" \
+            | gh api markdown -F text=@- -f mode=gfm -f context="$GITHUB_REPOSITORY" > "$work/notes.html"
+
+          # Ajour.zip is read with the signing key only once its provenance checks out. Without provenance, it is
+          # read without the key, just to let a release from before updates through with a warning.
+          if ! gh attestation verify "$work/Ajour.zip" --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$tag"; then
+            status=0
+            env -u SPARKLE_PRIVATE_KEY python3 -I scripts/appcast.py --check-only --archive "$work/Ajour.zip" || status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "::warning::Release $tag has no Sparkle update key, deploying without an update feed"
+              exit 0
+            fi
+            echo "::error::Ajour.zip of release $tag has no valid build provenance, keeping the previous deployment"
+            exit 1
+          fi
+
+          key_file="$RUNNER_TEMP/sparkle.key"
+          trap 'rm -f "$key_file"' EXIT
+          (umask 077; printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_file")
+
+          status=0
+          python3 -I scripts/appcast.py \
+            --release "$work/release.json" \
+            --notes "$work/notes.html" \
+            --archive "$work/Ajour.zip" \
+            --key-file "$key_file" \
+            --output "$work/appcast.xml" || status=$?
+          if [ "$status" -eq 3 ]; then
+            echo "::warning::Release $tag has no Sparkle update key, deploying without an update feed"
+            exit 0
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          cp "$work/appcast.xml" build/pages/appcast.xml
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: build/pages
       - id: deployment
         uses: actions/deploy-pages@v5

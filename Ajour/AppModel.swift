@@ -178,6 +178,9 @@ enum AliasActionError: Error, Equatable {
         return accountLoad
     }
 
+    /// Whether an alias is being enabled right now, before its timer is saved.
+    var isEnabling: Bool { enablesInFlight > 0 }
+
     /// Whether quitting has to wait for aliases to be disabled first, including ones still being enabled.
     var needsToDisableBeforeQuitting: Bool {
         engine.hasActiveTimers || enablesInFlight > 0
@@ -440,8 +443,9 @@ enum AliasActionError: Error, Equatable {
     /// Stops ticking so no poll or event fires during shutdown, then tries to disable timed aliases within
     /// the budget, including aliases still being enabled. Records of aliases that stay enabled remain on disk
     /// for the next launch. A running expiry pass is left alone: `disableAll` joins its attempts, and
-    /// cancelling it would start them over.
-    func prepareForTermination() async {
+    /// cancelling it would start them over. An update restart passes `false` to keep every timer running
+    /// across the relaunch, still waiting for enables in flight so their timers are saved.
+    func prepareForTermination(disablingTimedAliases: Bool = true) async {
         isShuttingDown = true
         tickLoop?.cancel()
         activityPoll?.cancel()
@@ -449,7 +453,11 @@ enum AliasActionError: Error, Equatable {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
         }
-        _ = await disableEverything(within: disableBudget)
+        if disablingTimedAliases {
+            _ = await disableEverything(within: disableBudget)
+        } else {
+            await waitForEnablesInFlight(until: ContinuousClock.now + disableBudget)
+        }
     }
 
     /// Lets enables in flight save their timers first, so the aliases they enable are disabled too.

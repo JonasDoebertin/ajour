@@ -10,26 +10,29 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
+Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. The build action also re-signs Sparkle's helper tools with the Developer ID, so the notarized app can update itself. The release workflow also attests the build provenance of the final `Ajour.zip`, for tag runs only. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
 
 ## Website
 
 The landing page at <https://ajour.email/> is the static site in `site/`: HTML and CSS, with its fonts and images in the same folder. Its only script, `clock.js`, shows the visitor's current date and time in the hero's menu bar.
 
-- **Pull requests** that change `site/`, `scripts/check-site.py`, `scripts/clock.test.mjs`, or the workflow run the website check and the clock tests.
-- **Pushes to `main`** that change them run the check and deploy `site/` to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings, with `ajour.email` as its custom domain. The domain's DNS points to GitHub Pages: A and AAAA records for the apex and a CNAME from `www` to `jonasdoebertin.github.io`. The domain is verified in the owner's GitHub account, so no other account can claim it for a Pages site.
+- **Pull requests** that change `site/`, `scripts/check-site.py`, `scripts/clock.test.mjs`, `scripts/appcast.py`, `scripts/appcast_test.py`, or the workflow run the website check, the clock tests and the feed tests.
+- **Pushes to `main`** that change them run the check and deploy `site/` and the feed to GitHub Pages. Pages uses "GitHub Actions" as its source in the repository settings, with `ajour.email` as its custom domain. The domain's DNS points to GitHub Pages: A and AAAA records for the apex and a CNAME from `www` to `jonasdoebertin.github.io`. The domain is verified in the owner's GitHub account, so no other account can claim it for a Pages site.
+
+The deploy also builds `appcast.xml`, the feed Sparkle reads to find updates, from the latest published release: its `Ajour.zip` and its notes. Publishing a release redeploys the site, so the feed picks it up. The private key is the `SPARKLE_PRIVATE_KEY` secret of the `github-pages` environment. The deploy publishes a feed only after `gh attestation verify` confirms that the release workflow run for that release's tag built `Ajour.zip`. No published release, no `Ajour.zip`, a release without Sparkle, or a missing key is skipped with a warning and the site deploys without a feed. Any other failure, including a failed provenance check, fails the deploy and the previous site stays live.
 
 Run the check locally:
 
 ```sh
 python3 -I scripts/check-site.py site
+python3 -I scripts/appcast_test.py
 node --test scripts/clock.test.mjs
 ```
 
 It fails on:
 
 - a missing file;
-- a URL that starts with `/`, which breaks because the page lives under `/ajour/`;
+- a URL that starts with `/`; relative URLs keep the page working under any path;
 - anything loaded from another server, and any script other than a module from `site/`;
 - rating markup, and FAQ data that doesn't match the page;
 - an image without alt text or size;

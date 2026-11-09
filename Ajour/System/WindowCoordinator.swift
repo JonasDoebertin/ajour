@@ -10,6 +10,9 @@ import SwiftUI
 
     private let makeContent: (Kind, WindowCoordinator) -> NSViewController
     private var windows: [Kind: NSWindow] = [:]
+    private(set) var lastClosedAt: Date?
+
+    var hasOpenWindow: Bool { !windows.isEmpty }
 
     init(makeContent: @escaping (Kind, WindowCoordinator) -> NSViewController) {
         self.makeContent = makeContent
@@ -31,6 +34,7 @@ import SwiftUI
               let kind = windows.first(where: { $0.value === window })?.key else { return }
         windows[kind] = nil
         window.contentViewController = nil
+        lastClosedAt = .now
     }
 
     private func makeWindow(_ kind: Kind) -> NSWindow {

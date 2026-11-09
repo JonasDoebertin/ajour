@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 defaults:
   run:
@@ -45,6 +47,8 @@ jobs:
           echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup
+      - name: Check the update configuration
+        run: python3 -I scripts/check-update-config.py
       - uses: ./.github/actions/test
 
       - id: certificate
@@ -70,7 +74,15 @@ jobs:
           api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
           api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
 
-      # A rerun replaces the build on the existing draft instead of failing.
+      # The website signs update feeds only for archives with this provenance.
+      - name: Attest the build provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.build.outputs.archive }}
+
+      # A rerun replaces the build on the existing draft instead of failing. A published release keeps its build,
+      # because the update feed's signature covers exactly that file.
       - name: Attach the build to a draft release
         if: github.ref_type == 'tag'
         env:
@@ -80,6 +92,10 @@ jobs:
           ARCHIVE: ${{ steps.build.outputs.archive }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::Release $TAG is already published, so its Ajour.zip stays as it is. Release a new version instead."
+              exit 1
+            fi
             gh release upload "$TAG" "$ARCHIVE" --clobber
           else
             gh release create "$TAG" "$ARCHIVE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"

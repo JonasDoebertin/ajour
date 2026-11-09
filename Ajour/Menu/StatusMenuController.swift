@@ -9,16 +9,21 @@ import Observation
     private let model: AppModel
     private let onboarding: OnboardingModel
     private let windows: WindowCoordinator
+    private let updates: UpdateController?
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private lazy var renderer = MenuRenderer(menu: menu) { [weak self] in self?.perform($0) }
     private var liveUpdates: Timer?
     private var iconUpdates: Task<Void, Never>?
+    private(set) var isMenuOpen = false
+    /// AppKit usually sends the chosen item's action after the menu closed, so the action may still be starting.
+    private(set) var lastClosedAt: Date?
 
-    init(model: AppModel, onboarding: OnboardingModel, windows: WindowCoordinator) {
+    init(model: AppModel, onboarding: OnboardingModel, windows: WindowCoordinator, updates: UpdateController?) {
         self.model = model
         self.onboarding = onboarding
         self.windows = windows
+        self.updates = updates
         super.init()
         menu.delegate = self
         statusItem.menu = menu
@@ -35,6 +40,7 @@ import Observation
 
     /// Menu tracking runs the run loop in its own mode, so the timer is added for all common modes.
     func menuWillOpen(_ menu: NSMenu) {
+        isMenuOpen = true
         Task { await model.refreshPinned() }
         let timer = Timer(timeInterval: Self.liveUpdateInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.showCurrentEntries() }
@@ -48,13 +54,17 @@ import Observation
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        isMenuOpen = false
         liveUpdates?.invalidate()
         liveUpdates = nil
         renderer.resetHighlight()
+        lastClosedAt = .now
     }
 
     private func showCurrentEntries() {
-        renderer.show(MenuEntry.entries(for: model.menuState(at: .now)))
+        var state = model.menuState(at: .now)
+        state.updates = updates?.menuState
+        renderer.show(MenuEntry.entries(for: state))
     }
 
     private func showIcon(hasActiveTimers: Bool) {
@@ -72,6 +82,10 @@ import Observation
             windows.show(.onboarding)
         case .openSettings:
             windows.show(.settings)
+        case .checkForUpdates, .showUpdate:
+            updates?.checkForUpdates()
+        case .restartToUpdate:
+            updates?.restartToUpdate()
         case .quit:
             NSApp.terminate(nil)
         case .createRandomAlias(let duration):

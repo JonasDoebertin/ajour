@@ -50,14 +50,16 @@ You need macOS 26 or later and a SimpleLogin account.
 1. Download [`Ajour.zip`](https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip) from the [latest release](https://github.com/JonasDoebertin/ajour/releases/latest), unzip it, and move `Ajour.app` to your Applications folder.
 2. Open Ajour. macOS asks once whether you want to open an app downloaded from the internet; choose Open.
 3. Follow the setup window. It takes you to SimpleLogin to create an API key and offers to use the key from your clipboard when you come back.
+4. Ajour updates itself from then on. Setup asks once whether it may install updates automatically.
 
 Releases after 0.3.0 are signed with a Developer ID and notarized by Apple. When you update from 0.3.0 or earlier, macOS asks once more whether Ajour may use its key in the Keychain. Choose Always Allow; later updates don't ask again.
 
 ## Privacy and security
 
 - Ajour signs in with an API key, never with your password. The key is stored in your Keychain and nowhere else.
-- The app only talks to `app.simplelogin.io`. It has no analytics and no third-party dependencies.
-- It runs in the App Sandbox, with outgoing network connections as its only entitlement.
+- Ajour talks to `app.simplelogin.io`, and checks `ajour.email` for updates. Updates download from GitHub.
+- Ajour has no analytics. Its only third-party code is Sparkle, which installs updates, and an update check sends nothing about your Mac.
+- It runs in the App Sandbox, which allows outgoing network connections and the hand-off to Sparkle's installer, and nothing else.
 - SimpleLogin can't disable an alias on a schedule, so the timers run on your Mac. If the Mac sleeps through the end of a timer, the alias stays enabled until it wakes and Ajour is running.
 
 ## Build from source

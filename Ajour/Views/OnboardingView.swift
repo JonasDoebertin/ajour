@@ -8,6 +8,7 @@ struct OnboardingView: View {
     let close: () -> Void
     @State private var clipboardKey: String?
     @State private var launchAtLogin = true
+    @State private var installsUpdatesAutomatically = true
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -30,6 +31,7 @@ struct OnboardingView: View {
         }
         .onChange(of: model.step, initial: true) {
             offerClipboardKey()
+            if model.step == .finish { installsUpdatesAutomatically = model.installsUpdatesAutomatically }
         }
         .onChange(of: model.closesWindow) { _, closesWindow in
             if closesWindow { close() }
@@ -177,6 +179,11 @@ struct OnboardingView: View {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .toggleStyle(.checkbox)
                     .disabled(model.isFinishing || model.isComplete)
+                if model.offersUpdates {
+                    Toggle("Install updates automatically", isOn: $installsUpdatesAutomatically)
+                        .toggleStyle(.checkbox)
+                        .disabled(model.isFinishing || model.isComplete)
+                }
             }
             if let errorMessage = model.errorMessage {
                 InlineError(message: errorMessage)
@@ -188,7 +195,12 @@ struct OnboardingView: View {
                         .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Done") {
-                        Task { await model.finish(launchAtLogin: launchAtLogin) }
+                        Task {
+                            await model.finish(
+                                launchAtLogin: launchAtLogin,
+                                installsUpdatesAutomatically: installsUpdatesAutomatically
+                            )
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)

@@ -15,7 +15,8 @@ struct MenuEntryTests {
         sections: MenuSections = MenuSections(timedUnpinned: [], pinned: []),
         pinnedLoaded: Bool = true,
         changes: [Int: AliasChange] = [:],
-        reducesMotion: Bool = false
+        reducesMotion: Bool = false,
+        updates: UpdateMenuState? = nil
     ) -> MenuState {
         MenuState(
             phase: phase,
@@ -25,6 +26,7 @@ struct MenuEntryTests {
             changes: changes,
             lastErrorIsNetwork: lastErrorIsNetwork,
             reducesMotion: reducesMotion,
+            updates: updates,
             locale: german,
             timeZone: berlin
         )
@@ -47,6 +49,44 @@ struct MenuEntryTests {
 
     private let timedItem = MenuAliasItem(id: 7, email: "shop@example.com", state: .timed(remaining: 60, endsAt: Date(timeIntervalSince1970: 60), length: 300))
     private let copyAddress = MenuEntry.action("Copy Address", .copy(email: "shop@example.com"), symbol: "doc.on.doc")
+
+    private let quit = MenuEntry.action("Quit", .quit, symbol: "power", shortcut: "q")
+
+    private func itemBeforeQuit(phase: AppModel.Phase = .signedIn(nil), updates: UpdateMenuState?) -> MenuEntry {
+        let entries = MenuEntry.entries(for: state(phase: phase, updates: updates))
+        return entries[entries.count - 2]
+    }
+
+    @Test func noUpdateItemWhenUpdatesAreUnsupported() {
+        let entries = MenuEntry.entries(for: state(updates: nil))
+        let updateActions: [MenuAction] = [.checkForUpdates, .showUpdate, .restartToUpdate]
+
+        #expect(!entries.contains { entry in
+            guard case .action(_, let action, _, _, _, _) = entry else { return false }
+            return updateActions.contains(action)
+        })
+        #expect(entries.last == quit)
+    }
+
+    @Test func idleShowsCheckForUpdatesRightBeforeQuit() {
+        #expect(itemBeforeQuit(updates: .idle) == .action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath"))
+        #expect(MenuEntry.entries(for: state(updates: .idle)).last == quit)
+    }
+
+    @Test func availableUpdateShowsUpdateAvailable() {
+        #expect(itemBeforeQuit(updates: .available(version: "0.5.0")) == .action("Update Available…", .showUpdate, symbol: "arrow.down.circle"))
+    }
+
+    @Test func downloadedUpdateShowsRestartToUpdate() {
+        let entries = MenuEntry.entries(for: state(updates: .readyToInstall(version: "0.5.0")))
+
+        #expect(itemBeforeQuit(updates: .readyToInstall(version: "0.5.0")) == .action("Restart to Update", .restartToUpdate, symbol: "arrow.clockwise"))
+        #expect(!entries.contains(.action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath")))
+    }
+
+    @Test func signedOutMenuOffersUpdatesToo() {
+        #expect(itemBeforeQuit(phase: .signedOut, updates: .idle) == .action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath"))
+    }
 
     @Test func signedOutExplainsSetup() {
         let entries = MenuEntry.entries(for: state(phase: .signedOut))

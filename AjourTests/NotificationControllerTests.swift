@@ -16,9 +16,15 @@ struct NotificationControllerTests {
 
     func makeController(
         onDisableRequested: @escaping (Int) -> Void = { _ in },
-        onRetryRequested: @escaping (Int) -> Void = { _ in }
+        onRetryRequested: @escaping (Int) -> Void = { _ in },
+        onUpdateRequested: @escaping () -> Void = {}
     ) -> NotificationController {
-        NotificationController(center: center, onDisableRequested: onDisableRequested, onRetryRequested: onRetryRequested)
+        NotificationController(
+            center: center,
+            onDisableRequested: onDisableRequested,
+            onRetryRequested: onRetryRequested,
+            onUpdateRequested: onUpdateRequested
+        )
     }
 
     @Test func activatingBecomesTheCenterDelegate() {
@@ -47,6 +53,15 @@ struct NotificationControllerTests {
         let category = try #require(center.categories.first { $0.identifier == "DISABLE_FAILED" })
         #expect(category.actions.map(\.identifier) == ["TRY_AGAIN"])
         #expect(category.actions.map(\.title) == ["Try Again"])
+    }
+
+    @Test func activatingRegistersTheUpdateCategoryWithoutActions() throws {
+        let controller = makeController()
+
+        controller.activate()
+
+        let category = try #require(center.categories.first { $0.identifier == NotificationIdentifier.updateAvailableCategory })
+        #expect(category.actions.isEmpty)
     }
 
     @Test func requestingAuthorizationAsksForAlertsAndSounds() async {
@@ -198,6 +213,61 @@ struct NotificationControllerTests {
         await controller.handleResponse(categoryIdentifier: "DISABLE_FAILED", actionIdentifier: "TRY_AGAIN", userInfo: ["aliasID": 7])
 
         #expect(retriedAliasIDs == [7])
+        #expect(disabledAliasIDs.isEmpty)
+    }
+
+    @Test func postingAnUpdateDeliversAQuietNotification() throws {
+        let controller = makeController()
+
+        controller.postUpdateAvailable(version: "0.5.0")
+
+        let request = try #require(center.addedRequests.only)
+        #expect(request.identifier == "update-available")
+        #expect(request.content.title == "Ajour 0.5.0 is available")
+        #expect(request.content.categoryIdentifier == NotificationIdentifier.updateAvailableCategory)
+        #expect(request.content.sound == nil)
+    }
+
+    @Test func aSeenUpdateLosesItsNotification() {
+        let controller = makeController()
+        controller.postUpdateAvailable(version: "0.5.0")
+
+        controller.removeUpdateNotification()
+
+        #expect(center.removedIdentifiers == ["update-available"])
+    }
+
+    @Test func clickingTheUpdateNotificationShowsTheUpdate() {
+        let clicked = NotificationController.shouldShowUpdate(
+            categoryIdentifier: NotificationIdentifier.updateAvailableCategory,
+            actionIdentifier: UNNotificationDefaultActionIdentifier
+        )
+        let clickedMail = NotificationController.shouldShowUpdate(
+            categoryIdentifier: NotificationIdentifier.mailReceivedCategory,
+            actionIdentifier: UNNotificationDefaultActionIdentifier
+        )
+
+        #expect(clicked == true)
+        #expect(clickedMail == false)
+    }
+
+    @Test func aClickOnTheUpdateNotificationIsForwarded() async {
+        var updateRequests = 0
+        var disabledAliasIDs: [Int] = []
+        let controller = makeController(onDisableRequested: { disabledAliasIDs.append($0) }, onUpdateRequested: { updateRequests += 1 })
+
+        await controller.handleResponse(
+            categoryIdentifier: NotificationIdentifier.updateAvailableCategory,
+            actionIdentifier: UNNotificationDefaultActionIdentifier,
+            userInfo: [:]
+        )
+        await controller.handleResponse(
+            categoryIdentifier: NotificationIdentifier.updateAvailableCategory,
+            actionIdentifier: UNNotificationDismissActionIdentifier,
+            userInfo: [:]
+        )
+
+        #expect(updateRequests == 1)
         #expect(disabledAliasIDs.isEmpty)
     }
 

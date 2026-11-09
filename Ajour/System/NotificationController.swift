@@ -12,11 +12,27 @@ struct NotificationContent: Equatable {
     var playsSound = true
 }
 
+extension NotificationContent {
+    /// Always the same identifier, so a newer version replaces the notice about an older one.
+    static func updateAvailable(version: String) -> NotificationContent {
+        NotificationContent(
+            identifier: updateAvailableIdentifier,
+            title: "Ajour \(version) is available",
+            body: "See what’s new and install it.",
+            categoryIdentifier: NotificationIdentifier.updateAvailableCategory,
+            playsSound: false
+        )
+    }
+
+    static let updateAvailableIdentifier = "update-available"
+}
+
 enum NotificationIdentifier {
     static let mailReceivedCategory = "MAIL_RECEIVED"
     static let disableNowAction = "DISABLE_NOW"
     static let disableFailedCategory = "DISABLE_FAILED"
     static let tryAgainAction = "TRY_AGAIN"
+    static let updateAvailableCategory = "UPDATE_AVAILABLE"
     static let aliasIDKey = "aliasID"
 }
 
@@ -145,17 +161,20 @@ enum NotificationResponseRouter {
     private let center: any UserNotificationCenter
     private let onDisableRequested: (Int) -> Void
     private let onRetryRequested: (Int) -> Void
+    private let onUpdateRequested: () -> Void
     /// Notifications about an alias, so they can be withdrawn once it is disabled.
     private var aliasNotificationIdentifiers: [Int: Set<String>] = [:]
 
     init(
         center: any UserNotificationCenter = SystemNotificationCenter(),
         onDisableRequested: @escaping (Int) -> Void,
-        onRetryRequested: @escaping (Int) -> Void
+        onRetryRequested: @escaping (Int) -> Void,
+        onUpdateRequested: @escaping () -> Void
     ) {
         self.center = center
         self.onDisableRequested = onDisableRequested
         self.onRetryRequested = onRetryRequested
+        self.onUpdateRequested = onUpdateRequested
     }
 
     /// Must run before the app finishes launching, so a click that launches the app still reaches the delegate.
@@ -173,7 +192,12 @@ enum NotificationResponseRouter {
             actions: [tryAgain],
             intentIdentifiers: []
         )
-        center.setNotificationCategories([mailReceived, disableFailed])
+        let updateAvailable = UNNotificationCategory(
+            identifier: NotificationIdentifier.updateAvailableCategory,
+            actions: [],
+            intentIdentifiers: []
+        )
+        center.setNotificationCategories([mailReceived, disableFailed, updateAvailable])
     }
 
     func requestAuthorization() async {
@@ -194,6 +218,21 @@ enum NotificationResponseRouter {
 
     func postCopied(email: String) {
         deliver(NotificationContentFactory.copied(email: email))
+    }
+
+    func postUpdateAvailable(version: String) {
+        deliver(.updateAvailable(version: version))
+    }
+
+    /// Once the update window has been seen or the update session ends, the notice has done its job.
+    func removeUpdateNotification() {
+        center.removeDeliveredNotifications(withIdentifiers: [NotificationContent.updateAvailableIdentifier])
+    }
+
+    /// A click on the update notice opens the update window. It has no buttons, and dismissing it does nothing.
+    nonisolated static func shouldShowUpdate(categoryIdentifier: String, actionIdentifier: String) -> Bool {
+        categoryIdentifier == NotificationIdentifier.updateAvailableCategory
+            && actionIdentifier == UNNotificationDefaultActionIdentifier
     }
 
     /// Offering "Disable Now" or saying "still enabled" for an alias that is already disabled would only confuse.
@@ -223,6 +262,8 @@ enum NotificationResponseRouter {
             userInfo: userInfo
         ) {
             await requestRetry(aliasID: aliasID)
+        } else if Self.shouldShowUpdate(categoryIdentifier: categoryIdentifier, actionIdentifier: actionIdentifier) {
+            await requestUpdate()
         }
     }
 
@@ -249,6 +290,10 @@ enum NotificationResponseRouter {
 
     private func requestRetry(aliasID: Int) {
         onRetryRequested(aliasID)
+    }
+
+    private func requestUpdate() {
+        onUpdateRequested()
     }
 
     private func deliver(_ content: NotificationContent) {

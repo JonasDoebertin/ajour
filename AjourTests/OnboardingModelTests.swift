@@ -12,12 +12,13 @@ struct OnboardingModelTests {
     let keyStore: InMemoryAPIKeyStore
     let transport = StubTransport()
     let launchAtLogin = FakeLaunchAtLogin()
+    let updates = FakeUpdates()
     let appModel: AppModel
     let onboarding: OnboardingModel
     let notificationRequests = Counter()
     let notificationPermission = Gate()
 
-    init(keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(), holdsNotificationPermission: Bool = false) {
+    init(keyStore: InMemoryAPIKeyStore = InMemoryAPIKeyStore(), holdsNotificationPermission: Bool = false, offersUpdates: Bool = true) {
         self.keyStore = keyStore
         appModel = AppModel(keyStore: keyStore, timerStore: InMemoryTimerStore(), transport: transport, retry: .once)
         let notificationRequests = notificationRequests
@@ -25,6 +26,7 @@ struct OnboardingModelTests {
         onboarding = OnboardingModel(
             appModel: appModel,
             launchAtLogin: launchAtLogin.control,
+            updates: offersUpdates ? updates.control : nil,
             requestNotificationAuthorization: {
                 notificationRequests.increment()
                 if holdsNotificationPermission { await notificationPermission.wait() }
@@ -182,7 +184,7 @@ struct OnboardingModelTests {
         let onboarding = await confirmedOnboarding()
         onboarding.confirmAccount()
 
-        await onboarding.finish(launchAtLogin: true)
+        await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true)
 
         #expect(launchAtLogin.appliedSettings == [true])
         #expect(notificationRequests.value == 1)
@@ -193,7 +195,7 @@ struct OnboardingModelTests {
         let onboarding = await confirmedOnboarding()
         onboarding.confirmAccount()
 
-        await onboarding.finish(launchAtLogin: false)
+        await onboarding.finish(launchAtLogin: false, installsUpdatesAutomatically: true)
 
         #expect(launchAtLogin.appliedSettings.isEmpty)
         #expect(notificationRequests.value == 1)
@@ -205,11 +207,55 @@ struct OnboardingModelTests {
         onboarding.confirmAccount()
         launchAtLogin.failure = LaunchAtLoginRefused()
 
-        await onboarding.finish(launchAtLogin: true)
+        await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true)
 
         #expect(onboarding.isComplete)
         #expect(notificationRequests.value == 1)
         #expect(onboarding.errorMessage == "Ajour could not be added to your login items. Allow it in System Settings › General › Login Items.")
+    }
+
+    @Test func finishingStoresTheAutomaticInstallChoice() async {
+        let onboarding = await confirmedOnboarding()
+        onboarding.confirmAccount()
+
+        await onboarding.finish(launchAtLogin: false, installsUpdatesAutomatically: false)
+
+        #expect(updates.appliedSettings == [false])
+    }
+
+    @Test func finishingStoresTheChoiceEvenWhenLaunchAtLoginFails() async {
+        let onboarding = await confirmedOnboarding()
+        onboarding.confirmAccount()
+        launchAtLogin.failure = LaunchAtLoginRefused()
+
+        await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: false)
+
+        #expect(updates.appliedSettings == [false])
+    }
+
+    @Test func automaticInstallChoiceStartsFromTheCurrentSetting() {
+        updates.installsAutomatically = false
+
+        #expect(!onboarding.installsUpdatesAutomatically)
+    }
+
+    @Test func automaticInstallChoiceStartsOnWithoutUpdater() {
+        let test = OnboardingModelTests(offersUpdates: false)
+        test.updates.installsAutomatically = false
+
+        #expect(test.onboarding.installsUpdatesAutomatically)
+    }
+
+    @Test func finishingWithoutUpdaterIgnoresTheChoice() async {
+        let test = OnboardingModelTests(offersUpdates: false)
+        let onboarding = await test.confirmedOnboarding()
+        onboarding.confirmAccount()
+
+        await onboarding.finish(launchAtLogin: false, installsUpdatesAutomatically: false)
+
+        #expect(!onboarding.offersUpdates)
+        #expect(test.updates.appliedSettings.isEmpty)
+        #expect(onboarding.isComplete)
     }
 
     @Test func finishKeepsTheWindowOpenToShowALaunchAtLoginFailure() async {
@@ -217,7 +263,7 @@ struct OnboardingModelTests {
         onboarding.confirmAccount()
         launchAtLogin.failure = LaunchAtLoginRefused()
 
-        await onboarding.finish(launchAtLogin: true)
+        await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true)
 
         #expect(!onboarding.closesWindow)
     }
@@ -226,7 +272,7 @@ struct OnboardingModelTests {
         let onboarding = await confirmedOnboarding()
         onboarding.confirmAccount()
 
-        await onboarding.finish(launchAtLogin: true)
+        await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true)
 
         #expect(onboarding.closesWindow)
     }
@@ -235,11 +281,11 @@ struct OnboardingModelTests {
         let test = OnboardingModelTests(holdsNotificationPermission: true)
         let onboarding = await test.confirmedOnboarding()
         onboarding.confirmAccount()
-        let firstFinish = Task { await onboarding.finish(launchAtLogin: true) }
+        let firstFinish = Task { await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true) }
         await test.notificationPermission.waitUntilSomeoneWaits()
         #expect(onboarding.isFinishing)
 
-        let secondFinish = Task { await onboarding.finish(launchAtLogin: true) }
+        let secondFinish = Task { await onboarding.finish(launchAtLogin: true, installsUpdatesAutomatically: true) }
         test.notificationPermission.open()
         await firstFinish.value
         await secondFinish.value

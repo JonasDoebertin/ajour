@@ -12,11 +12,17 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             group("Account") { account }
             group("General") { general }
+            if settings.offersUpdates {
+                group("Updates") { updates }
+            }
             group("About") { about }
         }
         .padding(24)
         .frame(width: 420, alignment: .leading)
-        .onAppear { settings.refreshLaunchAtLogin() }
+        .onAppear {
+            settings.refreshLaunchAtLogin()
+            settings.refreshInstallsUpdatesAutomatically()
+        }
         .task { await settings.refreshAccount() }
         .alert("Sign Out of Ajour?", isPresented: $confirmsSignOut) {
             // Not marked destructive: an alert takes Return away from a destructive button.
@@ -128,6 +134,32 @@ struct SettingsView: View {
             }
             .padding(.vertical, 8)
         }
+    }
+
+    @ViewBuilder private var updates: some View {
+        HStack {
+            Text("Install updates automatically")
+            Spacer()
+            Toggle("Install updates automatically", isOn: Binding(
+                get: { settings.installsUpdatesAutomatically },
+                set: { settings.setInstallsUpdatesAutomatically($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .padding(.vertical, 6)
+        Divider()
+        HStack {
+            Spacer()
+            switch settings.updateButton {
+            case .restartToUpdate:
+                Button("Restart to Update") { settings.restartToUpdate() }
+            case .checkForUpdates(let isEnabled):
+                Button("Check for Updates…") { settings.checkForUpdates() }
+                    .disabled(!isEnabled)
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder private var about: some View {
