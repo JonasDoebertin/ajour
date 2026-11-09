@@ -112,7 +112,7 @@ def check(site):
 
     for where, url in page.references:
         if url.startswith("/"):
-            problems.append(f"{where} {url} is root-relative; the page lives under /ajour/")
+            problems.append(f"{where} {url} is root-relative; use a relative URL so the page works under any path")
         elif is_external(url):
             problems.append(f"{where} {url} loads from another server")
         elif problem := local_problem(site, site, url):
