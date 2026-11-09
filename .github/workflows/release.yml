@@ -1,7 +1,7 @@
 name: Release
 
-# A version tag attaches the signed and notarized build to a draft release. A manual run goes through the same
-# signing and notarization on any branch and keeps the zip as a workflow artifact instead.
+# A version tag attaches the signed and notarized zip and disk image to a draft release. A manual run goes through
+# the same signing and notarization on any branch and keeps both as workflow artifacts instead.
 on:
   push:
     tags: ["v*"]
@@ -74,38 +74,59 @@ jobs:
           api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
           api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
 
+      - id: disk-image
+        uses: ./.github/actions/disk-image
+        with:
+          app: ${{ steps.build.outputs.app }}
+          name: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
+          team-id: ${{ env.TEAM_ID }}
+          api-key: ${{ secrets.NOTARY_API_KEY }}
+          api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
+          api-issuer-id: ${{ secrets.NOTARY_API_ISSUER_ID }}
+
       # The website signs update feeds only for archives with this provenance.
       - name: Attest the build provenance
         if: github.ref_type == 'tag'
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: ${{ steps.build.outputs.archive }}
+          subject-path: |
+            ${{ steps.build.outputs.archive }}
+            ${{ steps.disk-image.outputs.path }}
 
-      # A rerun replaces the build on the existing draft instead of failing. A published release keeps its build,
-      # because the update feed's signature covers exactly that file.
-      - name: Attach the build to a draft release
+      # A rerun replaces the builds on the existing draft instead of failing. A published release keeps its builds,
+      # because the update feed's signature covers exactly that zip.
+      - name: Attach the builds to a draft release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ steps.tag.outputs.version }}
           ARCHIVE: ${{ steps.build.outputs.archive }}
+          IMAGE: ${{ steps.disk-image.outputs.path }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
-              echo "::error::Release $TAG is already published, so its Ajour.zip stays as it is. Release a new version instead."
+              echo "::error::Release $TAG is already published, so its Ajour.zip and Ajour.dmg stay as they are. Release a new version instead."
               exit 1
             fi
-            gh release upload "$TAG" "$ARCHIVE" --clobber
+            gh release upload "$TAG" "$ARCHIVE" "$IMAGE" --clobber
           else
-            gh release create "$TAG" "$ARCHIVE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
+            gh release create "$TAG" "$ARCHIVE" "$IMAGE" --draft --verify-tag --generate-notes --title "Ajour $VERSION"
           fi
 
-      - name: Keep the build as an artifact
+      - name: Keep the zip as an artifact
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.build.outputs.archive }}
+          archive: false
+          retention-days: 14
+
+      - name: Keep the disk image as an artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.disk-image.outputs.path }}
           archive: false
           retention-days: 14
 

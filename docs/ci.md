@@ -4,13 +4,13 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 
 - **Pushes to `main` and pull requests:** run the SimpleLoginKit and app tests.
 - **Builds for pull requests:** add the `build` label to a pull request. The workflow removes the label, builds the app, and comments with a download link. The build is kept for 14 days. To build a newer commit, add the label again.
-- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour.zip` to a draft release titled "Ajour 1.2.3" with generated notes. The zip keeps one name across releases, so `releases/latest/download/Ajour.zip` always downloads the latest published version; the website and the README link to it. Manual runs of the workflow keep their zip as an artifact named `Ajour-run<number>`. Review the draft on GitHub and publish it.
+- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour.zip` and `Ajour.dmg` to a draft release titled "Ajour 1.2.3" with generated notes. Both keep one name across releases, so `releases/latest/download/Ajour.zip` and `releases/latest/download/Ajour.dmg` always download the latest published version; the website and the README link to the zip. Manual runs of the workflow keep both as artifacts named `Ajour-run<number>`. Review the draft on GitHub and publish it.
 
 ```sh
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. The build action also re-signs Sparkle's helper tools with the Developer ID, so the notarized app can update itself. The release workflow also attests the build provenance of the final `Ajour.zip`, for tag runs only. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
+Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. The build action also re-signs Sparkle's helper tools with the Developer ID, so the notarized app can update itself. The disk image opens to a window with the app, a link to Applications and the background from `packaging/dmg/`. `scripts/build-dmg.sh` builds it with dmgbuild, pinned by hash in `packaging/dmg/requirements.txt`, without Finder; the release workflow then signs, notarizes and staples it like the app. The release workflow also attests the build provenance of the final `Ajour.zip` and `Ajour.dmg`, for tag runs only. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
 
 ## Website
 
