@@ -85,11 +85,12 @@ class DiskImageTests(unittest.TestCase):
         self.assertTrue((self.mount / "Ajour.app").is_dir())
         self.assertEqual(os.readlink(self.mount / "Applications"), "/Applications")
 
-    def test_shows_the_app_without_its_extension(self):
-        hidden = subprocess.run(
-            ["GetFileInfo", "-aE", str(self.mount / "Ajour.app")], check=True, capture_output=True, text=True,
+    def test_leaves_the_app_bundle_untouched(self):
+        # Finder information on the bundle breaks `codesign --verify --strict` of the installed app.
+        attributes = subprocess.run(
+            ["xattr", str(self.mount / "Ajour.app")], check=True, capture_output=True, text=True,
         )
-        self.assertEqual(hidden.stdout.strip(), "1")
+        self.assertNotIn("com.apple.FinderInfo", attributes.stdout)
 
     def test_has_background_and_volume_icon(self):
         background = self.mount / ".background.tiff"

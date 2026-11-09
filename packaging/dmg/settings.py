@@ -7,7 +7,6 @@ application_name = os.path.basename(application)
 format = "ULFO"
 files = [application]
 symlinks = {"Applications": "/Applications"}
-hide_extensions = [application_name]
 icon = os.path.join(application, "Contents", "Resources", "AppIcon.icns")
 
 # dmgbuild finds background@2x.png next to it and combines both into one HiDPI image.
