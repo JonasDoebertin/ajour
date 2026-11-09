@@ -36,7 +36,7 @@ It fails on:
 - anything loaded from another server, and any script other than a module from `site/`;
 - rating markup, and FAQ data that doesn't match the page;
 - an image without alt text or size;
-- a download link that doesn't point to `releases/latest/download/Ajour.zip`.
+- a download link, or the structured data's `downloadUrl`, that doesn't point to `releases/latest/download/Ajour.dmg`.
 
 The screenshots on the page are transparent, in a light and a dark version. To retake them:
 
