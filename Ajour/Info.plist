@@ -33,7 +33,7 @@
 	<key>SUFeedURL</key>
 	<string>https://ajour.email/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_OWNER_PUBLIC_KEY</string>
+	<string>0TX6AhoELPJyL2o0OLpgBSicKhskfJ7TEy+x/7+jUYA=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUVerifyUpdateBeforeExtraction</key>

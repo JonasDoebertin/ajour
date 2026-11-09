@@ -32,7 +32,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
         SUFeedURL: https://ajour.email/appcast.xml
-        SUPublicEDKey: REPLACE_WITH_OWNER_PUBLIC_KEY
+        SUPublicEDKey: 0TX6AhoELPJyL2o0OLpgBSicKhskfJ7TEy+x/7+jUYA=
         SUEnableInstallerLauncherService: true
         SUEnableAutomaticChecks: true
         SUAutomaticallyUpdate: true
