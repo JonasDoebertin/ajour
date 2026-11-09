@@ -49,38 +49,13 @@ runs:
         fi
 
     - name: Notarize the app
-      shell: bash
-      env:
-        ARCHIVE: ${{ inputs.archive }}
-        API_KEY: ${{ inputs.api-key }}
-        API_KEY_ID: ${{ inputs.api-key-id }}
-        API_ISSUER_ID: ${{ inputs.api-issuer-id }}
-      run: |
-        key="$RUNNER_TEMP/notary-key.p8"
-        trap 'rm -f "$key"' EXIT
-        base64 --decode <<< "$API_KEY" > "$key"
-        credentials=(--key "$key" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID")
-
-        submission="$(xcrun notarytool submit "$ARCHIVE" "${credentials[@]}" --wait --timeout 1h --output-format json)" || true
-        echo "$submission"
-        id="$(jq -r '.id // empty' <<< "$submission" 2> /dev/null || true)"
-        status="$(jq -r '.status // empty' <<< "$submission" 2> /dev/null || true)"
-        if [ -z "$id" ]; then
-          echo "::error::The submission to Apple's notary service failed. Check the NOTARY_API_* secrets."
-          exit 1
-        fi
-        case "$status" in
-          Accepted) ;;
-          Invalid | Rejected)
-            xcrun notarytool log "$id" "${credentials[@]}" || true
-            echo "::error::Apple did not notarize the app (status: $status)."
-            exit 1
-            ;;
-          *)
-            echo "::error::Apple is still processing submission $id after an hour. Rerun the job later."
-            exit 1
-            ;;
-        esac
+      uses: ./.github/actions/submit-for-notarization
+      with:
+        file: ${{ inputs.archive }}
+        subject: the app
+        api-key: ${{ inputs.api-key }}
+        api-key-id: ${{ inputs.api-key-id }}
+        api-issuer-id: ${{ inputs.api-issuer-id }}
 
     - name: Staple and check the app
       shell: bash
