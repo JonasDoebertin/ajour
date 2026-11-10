@@ -1,3 +1,4 @@
+import AppIntents
 import AppKit
 import SimpleLoginKit
 import SwiftUI
@@ -15,6 +16,9 @@ import SwiftUI
 
     override init() {
         let model = Self.makeAppModel()
+        if !Self.isHostingUnitTests {
+            AppDependencyManager.shared.add(dependency: model)
+        }
         let appDelegate = WeakReference<AppDelegate>()
         let notifications = NotificationController(
             onDisableRequested: { aliasID in

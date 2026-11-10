@@ -75,6 +75,20 @@ With a real account, from the menu bar: All Aliases…
 7. "Copy Address" puts the email on the clipboard.
 8. Optional: with the network off, an action shows its error at the bottom of the window and at the top of the menu as an entry with the `wifi.slash` symbol in the danger color, the title "Could not reach SimpleLogin.", and the detail line "Check your network connection."
 
+## Shortcuts and Spotlight
+
+Run with an installed build, never with a Debug build next to the installed app: both have the same bundle identifier, so Spotlight may list either.
+
+1. Spotlight "Enable alias in Ajour": pick a pinned alias, keep 1 Hour. The dialog appears, the address pastes, and the menu shows the timer.
+2. The same alias again: the dialog says "stays enabled for 1 hour from now".
+3. A permanently enabled alias: "already enabled", and the menu shows no timer.
+4. Typing in the picker finds an unpinned alias.
+5. "Create random alias in Ajour" with expiry 5 Minutes: the address pastes, the menu shows the timer, and no "copied" notification appears.
+6. "Disable alias in Ajour": the alias is off in the menu.
+7. A personal shortcut using Enable Alias, run from Raycast with a hotkey: the address pastes.
+8. Quit Ajour, run "Create random alias in Ajour": Ajour launches in the background and the action succeeds.
+9. Sign out, run Enable Alias: the error says "Not signed in. Set up your API key first."
+
 ## Accessibility
 
 Turn the settings on yourself for these checks and back off afterwards. The Debug build launched with `-AjourDemo YES` gives the quoted demo states, and adding `-AjourDemoSignedOut YES` gives "Not set up" and onboarding. The network notice and the stuck states need a normal launch with a real account and Wi-Fi off, because the demo never goes online. The phrases below are what the accessibility tree carries; VoiceOver adds the role ("menu item", "text", "button") and may pause at line breaks. Anything marked "Listen for" couldn't be settled from the tree alone.
