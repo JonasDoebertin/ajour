@@ -292,6 +292,24 @@ final class ActionEnableTests {
         #expect(test.copied.isEmpty)
     }
 
+    @Test func anEnableCountsAsInFlightUntilItEnds() async throws {
+        let model = try await signedInModel()
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: false))
+        transport.holdNext("/api/aliases/7/toggle", method: "POST", status: 500, json: #"{"error":"Internal error"}"#)
+        let enabling = Task { try await model.enableAndCopy(aliasID: 7, email: "shop@example.com", for: .oneHour) }
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.isEnabling)
+        #expect(model.needsToDisableBeforeQuitting)
+
+        transport.release()
+        _ = await enabling.result
+
+        #expect(!model.isEnabling)
+        #expect(!model.needsToDisableBeforeQuitting)
+    }
+
     @Test func waitingForLaunchReturnsOnceStarted() async throws {
         let model = makeModel()
         let waiting = Task { try await model.waitUntilLoaded() }

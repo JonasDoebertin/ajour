@@ -136,6 +136,22 @@ final class ActionCreateAndDisableTests {
         #expect(test.announced.isEmpty)
     }
 
+    @Test func aCreationCountsAsInFlightUntilItEnds() async throws {
+        let model = try await signedInModel()
+        transport.holdNext("/api/alias/random/new", method: "POST", status: 201, json: Fixtures.newAliasJSON(id: 42, email: "random@example.com"))
+        let creating = Task { try await model.createRandomAliasAndCopy(expiringAfter: nil) }
+        await transport.waitUntilARequestIsHeld()
+
+        #expect(model.isEnabling)
+        #expect(model.needsToDisableBeforeQuitting)
+
+        transport.release()
+        _ = try await creating.value
+
+        #expect(!model.isEnabling)
+        #expect(!model.needsToDisableBeforeQuitting)
+    }
+
     @Test func disableTurnsOffATimedAlias() async throws {
         let test = ActionCreateAndDisableTests(records: [runningRecord(aliasID: 7)])
         let model = try await test.signedInModel()
