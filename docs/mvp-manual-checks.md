@@ -85,9 +85,12 @@ Run with an installed build, never with a Debug build next to the installed app:
 4. Typing in the picker finds an unpinned alias.
 5. "Create random alias in Ajour" with expiry 5 Minutes: the address pastes, the menu shows the timer, and no "copied" notification appears.
 6. "Disable alias in Ajour": the alias is off in the menu.
-7. A personal shortcut using Enable Alias, run from Raycast with a hotkey: the address pastes.
-8. Quit Ajour, run "Create random alias in Ajour": Ajour launches in the background and the action succeeds.
-9. Sign out, run Enable Alias: the error says "Not signed in. Set up your API key first."
+7. In the Shortcuts app's Ajour section, run Enable Alias, Create Random Alias and Disable Alias: each shows the same dialog as from Spotlight, and the menu shows the change.
+8. A shortcut "Enable Alias → Show Result": the shown result is the address.
+9. A personal shortcut using Enable Alias, run from Raycast with a hotkey: the address pastes.
+10. Quit Ajour, run "Create random alias in Ajour": Ajour launches in the background and the action succeeds.
+11. Sign out, run Enable Alias: the error says "Not signed in. Set up your API key first."
+12. Wi-Fi off, run Enable Alias: the error says "Could not reach SimpleLogin. Check your network connection."
 
 ## Accessibility
 

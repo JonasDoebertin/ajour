@@ -30,7 +30,7 @@ Ajour turns that into two clicks. Pick the alias in the menu bar, enable it for 
 - **Never leave an alias on by accident.** If your Mac is asleep or Ajour isn't running when a timer ends, the alias is disabled right after wake or at the next launch. Quitting Ajour disables timed aliases first. When disabling keeps failing, Ajour tells you and keeps trying.
 - **Create aliases fast.** One click creates a random alias and copies it to the clipboard, optionally with an expiry. The New Alias window takes your own prefix and offers your custom domains first.
 - **Find any alias.** The All Aliases window searches your whole account. Right-click an alias to pin it to the menu, copy it, or enable or disable it.
-- **Use it from Spotlight, Shortcuts or Raycast.** Enable an alias for a while, create a random alias, or disable one without opening the menu. Enabling or creating puts the address on the clipboard.
+- **Use it from Spotlight, Shortcuts, or Raycast.** Enable an alias for a while, create a random alias, or disable one without opening the menu. Enabling or creating puts the address on the clipboard.
 - **Stay out of the way.** Ajour lives in the menu bar, has no Dock icon, and can start at login. If macOS blocks launching at login, Settings links to Login Items. Signing out asks for confirmation first.
 
 <table>
