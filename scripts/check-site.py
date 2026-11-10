@@ -11,7 +11,7 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-LATEST_DOWNLOAD = "https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip"
+LATEST_DOWNLOAD = "https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.dmg"
 CSS_URL = re.compile(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)")
 
 
@@ -148,6 +148,8 @@ def check(site):
         except json.JSONDecodeError as error:
             problems.append(f"JSON-LD does not parse: {error}")
             continue
+        if data.get("@type") == "SoftwareApplication" and data.get("downloadUrl") != LATEST_DOWNLOAD:
+            problems.append(f"JSON-LD downloadUrl points to {data.get('downloadUrl')}")
         if data.get("@type") == "FAQPage":
             for question in data.get("mainEntity", []):
                 name = question.get("name", "")

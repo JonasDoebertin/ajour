@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ajour.email/">Website</a> · <a href="https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip">Download</a>
+  <a href="https://ajour.email/">Website</a> · <a href="https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.dmg">Download</a>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@ Ajour turns that into two clicks. Pick the alias in the menu bar, enable it for 
 
 You need macOS 26 or later and a SimpleLogin account.
 
-1. Download [`Ajour.zip`](https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.zip) from the [latest release](https://github.com/JonasDoebertin/ajour/releases/latest), unzip it, and move `Ajour.app` to your Applications folder.
+1. Download [`Ajour.dmg`](https://github.com/JonasDoebertin/ajour/releases/latest/download/Ajour.dmg) from the [latest release](https://github.com/JonasDoebertin/ajour/releases/latest), open it, and drag Ajour to Applications.
 2. Open Ajour. macOS asks once whether you want to open an app downloaded from the internet; choose Open.
 3. Follow the setup window. It takes you to SimpleLogin to create an API key and offers to use the key from your clipboard when you come back.
 4. Ajour updates itself from then on. Setup asks once whether it may install updates automatically.
