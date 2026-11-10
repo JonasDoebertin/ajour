@@ -31,3 +31,16 @@ public enum APIError: Error, Equatable, Sendable {
         }
     }
 }
+
+extension APIError {
+    /// SimpleLogin answers 404 or 400 "Unknown error" for aliases that don't exist. A 403 is different: the alias
+    /// belongs to another account, for example after the key was replaced, and may still be enabled there.
+    public static func meansAliasIsGone(_ error: any Error) -> Bool {
+        switch error as? APIError {
+        case .server(status: 404, _), .server(status: 400, message: "Unknown error"):
+            true
+        default:
+            false
+        }
+    }
+}
