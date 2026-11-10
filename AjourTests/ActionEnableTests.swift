@@ -270,6 +270,28 @@ final class ActionEnableTests {
         #expect(copied == ["shop@example.com"])
     }
 
+    @Test func enableIsRefusedOnceQuittingStarts() async throws {
+        let test = ActionEnableTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.holdNext("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let quit = Task { await model.prepareForTermination() }
+        await test.transport.waitUntilARequestIsHeld()
+        test.transport.enqueue("/api/aliases/9", json: Fixtures.aliasJSON(id: 9, enabled: false))
+        test.transport.enqueue("/api/aliases/9", json: Fixtures.aliasJSON(id: 9, enabled: false))
+        test.transport.enqueue("/api/aliases/9/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: true))
+
+        await #expect(throws: AliasActionError.quitting) {
+            try await model.enableAndCopy(aliasID: 9, email: "later@example.com", for: .oneHour)
+        }
+        test.transport.release()
+        await quit.value
+
+        #expect(test.requestCount(path: "/api/aliases/9/toggle") == 0)
+        #expect(model.engine.record(for: 9) == nil)
+        #expect(test.copied.isEmpty)
+    }
+
     @Test func waitingForLaunchReturnsOnceStarted() async throws {
         let model = makeModel()
         let waiting = Task { try await model.waitUntilLoaded() }
@@ -293,5 +315,6 @@ final class ActionEnableTests {
         #expect(AppModel.userMessage(for: AliasActionError.busy(email: "shop@example.com")) == "shop@example.com is busy. Try again in a moment.")
         #expect(AppModel.userMessage(for: AliasActionError.gone(email: "shop@example.com")) == "shop@example.com no longer exists.")
         #expect(AppModel.userMessage(for: AliasActionError.notReady) == "Ajour isn't ready yet. Try again in a moment.")
+        #expect(AppModel.userMessage(for: AliasActionError.quitting) == "Ajour is quitting.")
     }
 }

@@ -68,6 +68,7 @@ enum AliasActionError: Error, Equatable {
     case busy(email: String)
     case gone(email: String)
     case notReady
+    case quitting
 }
 
 enum AliasEnableOutcome: Equatable {
@@ -369,6 +370,7 @@ struct EnabledAlias: Equatable {
     /// leaves one that is enabled without a timer as it is, then copies its current address. Fails on a busy alias
     /// instead of ignoring it, and leaves `lastError` to the menu. Runs in a task of its own, so cancelling
     /// the caller never stops it halfway. `email` names the alias only in errors raised before it is read.
+    /// Refused once quitting starts, because quit no longer waits for new enables and the alias could stay on.
     func enableAndCopy(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
         try await Task { try await enableAndCopyNow(aliasID: aliasID, email: email, for: duration) }.value
     }
@@ -387,6 +389,7 @@ struct EnabledAlias: Equatable {
     /// end up disabled while the action reports it enabled. A timed alias that was disabled elsewhere loses its
     /// outdated timer and is enabled like an untimed one, so no expiry disable can run while it is turned on.
     private func enableAndCopyNow(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
+        guard !isShuttingDown else { throw AliasActionError.quitting }
         guard !isBusy(aliasID: aliasID) else { throw AliasActionError.busy(email: email) }
         guard let api else { throw TimerEngineError.notSignedIn }
         guard engine.loadError == nil else { throw TimerEngineError.storeUnavailable }
@@ -448,10 +451,11 @@ struct EnabledAlias: Equatable {
 
     /// For actions outside the menu: creates a random alias like the menu does, but doesn't announce the copy,
     /// because the action confirms it itself. Leaves `lastError` to the menu. Runs in a task of its own, so
-    /// cancelling the caller never leaves a new alias untimed.
+    /// cancelling the caller never leaves a new alias untimed. Refused once quitting starts, like enabling.
     func createRandomAliasAndCopy(expiringAfter duration: AliasDuration?) async throws -> Alias {
         try await Task {
-            try await createAlias(expiringAfter: duration, announcesCopy: false) { try await $0.createRandomAlias() }
+            guard !isShuttingDown else { throw AliasActionError.quitting }
+            return try await createAlias(expiringAfter: duration, announcesCopy: false) { try await $0.createRandomAlias() }
         }.value
     }
 
@@ -815,6 +819,8 @@ struct EnabledAlias: Equatable {
             "\(email) no longer exists."
         case AliasActionError.notReady:
             "Ajour isn't ready yet. Try again in a moment."
+        case AliasActionError.quitting:
+            "Ajour is quitting."
         case TimerEngineError.accountChanged(let email, disabledAgain: true):
             "\(email) was enabled for the previous account and has been disabled."
         case TimerEngineError.accountChanged(let email, disabledAgain: false):

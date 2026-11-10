@@ -116,6 +116,26 @@ final class ActionCreateAndDisableTests {
         #expect(copied == ["random@example.com"])
     }
 
+    @Test func creationIsRefusedOnceQuittingStarts() async throws {
+        let test = ActionCreateAndDisableTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel()
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.holdNext("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let quit = Task { await model.prepareForTermination() }
+        await test.transport.waitUntilARequestIsHeld()
+        test.enqueueRandomAlias()
+
+        await #expect(throws: AliasActionError.quitting) {
+            try await model.createRandomAliasAndCopy(expiringAfter: .oneHour)
+        }
+        test.transport.release()
+        await quit.value
+
+        #expect(test.requestCount(path: "/api/alias/random/new") == 0)
+        #expect(test.copied.isEmpty)
+        #expect(test.announced.isEmpty)
+    }
+
     @Test func disableTurnsOffATimedAlias() async throws {
         let test = ActionCreateAndDisableTests(records: [runningRecord(aliasID: 7)])
         let model = try await test.signedInModel()
