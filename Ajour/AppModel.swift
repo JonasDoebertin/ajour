@@ -432,7 +432,7 @@ struct EnabledAlias: Equatable {
     func createRandomAlias(expiringAfter duration: AliasDuration?) async {
         let session = self.session
         do {
-            _ = try await createAlias(expiringAfter: duration) { try await $0.createRandomAlias() }
+            _ = try await createAlias(expiringAfter: duration, announcesCopy: true) { try await $0.createRandomAlias() }
             lastError = nil
         } catch {
             guard session == self.session || error is AliasCreationError else { return }
@@ -441,9 +441,30 @@ struct EnabledAlias: Equatable {
     }
 
     func createCustomAlias(prefix: String, suffix: AliasSuffix, mailboxID: Int, expiringAfter duration: AliasDuration?) async throws -> Alias {
-        try await createAlias(expiringAfter: duration) {
+        try await createAlias(expiringAfter: duration, announcesCopy: true) {
             try await $0.createCustomAlias(prefix: prefix, signedSuffix: suffix.signedSuffix, mailboxIDs: [mailboxID])
         }
+    }
+
+    /// For actions outside the menu: creates a random alias like the menu does, but doesn't announce the copy,
+    /// because the action confirms it itself. Leaves `lastError` to the menu. Runs in a task of its own, so
+    /// cancelling the caller never leaves a new alias untimed.
+    func createRandomAliasAndCopy(expiringAfter duration: AliasDuration?) async throws -> Alias {
+        try await Task {
+            try await createAlias(expiringAfter: duration, announcesCopy: false) { try await $0.createRandomAlias() }
+        }.value
+    }
+
+    /// For actions outside the menu: disables the alias now and ends its timer. Fails on an alias another action
+    /// changes instead of ignoring it, but joins a running expiry disable, which ends the same way. Leaves
+    /// `lastError` to the menu. Runs in a task of its own, so cancelling the caller never stops it halfway.
+    func disable(aliasID: Int, email: String) async throws {
+        try await Task {
+            guard changes[aliasID] == nil else { throw AliasActionError.busy(email: email) }
+            changes[aliasID] = .disabling
+            defer { changes[aliasID] = nil }
+            try await engine.disableNow(aliasID: aliasID)
+        }.value
     }
 
     /// Pinned aliases are listed in the menu. The menu's list changes right away and is then reloaded.
@@ -695,6 +716,7 @@ struct EnabledAlias: Equatable {
     /// An alias created for an account that was signed out or replaced meanwhile isn't timed or copied.
     private func createAlias(
         expiringAfter duration: AliasDuration?,
+        announcesCopy: Bool,
         _ create: (SimpleLoginAPI) async throws -> Alias
     ) async throws -> Alias {
         guard let api else { throw TimerEngineError.notSignedIn }
@@ -708,7 +730,7 @@ struct EnabledAlias: Equatable {
                 try await startTimer(forNewAlias: alias, duration: duration)
             }
             copyToClipboard(alias.email)
-            onNewAliasCopied(alias.email)
+            if announcesCopy { onNewAliasCopied(alias.email) }
             return alias
         }
     }
