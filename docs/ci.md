@@ -4,7 +4,7 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 
 - **Pushes to `main` and pull requests:** run the SimpleLoginKit and app tests.
 - **Builds for pull requests:** add the `build` label to a pull request. The workflow removes the label, builds the app, and comments with a download link. The build is kept for 14 days. To build a newer commit, add the label again.
-- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour.zip` and `Ajour.dmg` to a draft release titled "Ajour 1.2.3" with generated notes. Both keep one name across releases, so `releases/latest/download/Ajour.zip` and `releases/latest/download/Ajour.dmg` always download the latest published version; the website and the README link to the zip. Manual runs of the workflow keep both as artifacts named `Ajour-run<number>`. Review the draft on GitHub and publish it.
+- **Releases:** push a tag like `v1.2.3` that points to a commit on `main`. The release workflow tests, builds the app with version 1.2.3, and attaches `Ajour.zip` and `Ajour.dmg` to a draft release titled "Ajour 1.2.3" with generated notes. Both keep one name across releases, so `releases/latest/download/Ajour.zip` and `releases/latest/download/Ajour.dmg` always download the latest published version; the website and the README link to the disk image. Manual runs of the workflow keep both as artifacts named `Ajour-run<number>.zip` and `Ajour-run<number>.dmg`. Review the draft on GitHub and publish it. A tag whose release is already published fails right away: a published release keeps its files, so release a new version instead.
 
 ```sh
 git tag v1.2.3 && git push origin v1.2.3

@@ -21,6 +21,7 @@ concurrency:
 
 env:
   TEAM_ID: KA74RG7337
+  BUILD_NAME: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
 
 jobs:
   release:
@@ -30,10 +31,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A published release keeps its builds, so this fails before spending time on signing and notarization.
       - name: Check the tag
         id: tag
         if: github.ref_type == 'tag'
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           if ! [[ "$TAG" =~ ^v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
@@ -42,6 +45,10 @@ jobs:
           fi
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::$TAG points to a commit that is not on main."
+            exit 1
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = "false" ]; then
+            echo "::error::Release $TAG is already published, so its Ajour.zip and Ajour.dmg stay as they are. Release a new version instead."
             exit 1
           fi
           echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
@@ -62,7 +69,7 @@ jobs:
         with:
           version: ${{ steps.tag.outputs.version }}
           build-number: ${{ github.run_number }}
-          archive-name: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
+          archive-name: ${{ env.BUILD_NAME }}
           team-id: ${{ env.TEAM_ID }}
 
       - uses: ./.github/actions/notarize
@@ -78,7 +85,7 @@ jobs:
         uses: ./.github/actions/disk-image
         with:
           app: ${{ steps.build.outputs.app }}
-          name: ${{ github.ref_type == 'tag' && 'Ajour' || format('Ajour-run{0}', github.run_number) }}
+          name: ${{ env.BUILD_NAME }}
           team-id: ${{ env.TEAM_ID }}
           api-key: ${{ secrets.NOTARY_API_KEY }}
           api-key-id: ${{ secrets.NOTARY_API_KEY_ID }}
@@ -94,7 +101,8 @@ jobs:
             ${{ steps.disk-image.outputs.path }}
 
       # A rerun replaces the builds on the existing draft instead of failing. A published release keeps its builds,
-      # because the update feed's signature covers exactly that zip.
+      # because the update feed's signature covers exactly that zip; this checks again in case it was published
+      # while the workflow ran.
       - name: Attach the builds to a draft release
         if: github.ref_type == 'tag'
         env:
