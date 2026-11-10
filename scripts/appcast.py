@@ -2,14 +2,11 @@
 
     python3 -I scripts/appcast.py --release release.json --notes notes.html \
         --archive Ajour.zip --key-file seed --output appcast.xml
-    python3 -I scripts/appcast.py --check-only --archive Ajour.zip
 
 release.json is GitHub's "latest release" response, notes.html the rendered release notes and
 seed the base64 Ed25519 seed exported by Sparkle's generate_keys -x. Needs OpenSSL 3.
 
-Writes the feed and exits 0, exits 3 without writing when the app has no SUPublicEDKey yet,
-or prints the problem and exits 1. With --check-only, needs no key and writes nothing: exits 3
-when the app has no SUPublicEDKey yet and 0 when it has one.
+Writes the feed and exits 0, or prints the problem and exits 1.
 """
 
 from __future__ import annotations
@@ -36,7 +33,6 @@ INFO_PLIST = "Ajour.app/Contents/Info.plist"
 PRIVATE_KEY_PREFIX = bytes.fromhex("302e020100300506032b657004220420")
 PUBLIC_KEY_PREFIX = bytes.fromhex("302a300506032b6570032100")
 SEED_PROBLEM = "SPARKLE_PRIVATE_KEY must be the base64 32-byte seed from generate_keys -x"
-EXIT_SKIPPED = 3
 
 ElementTree.register_namespace("sparkle", SPARKLE_NAMESPACE)
 
@@ -188,21 +184,10 @@ def read_release(path: Path) -> dict:
         raise AppcastError(f"{path} is not a GitHub release: {error!r}") from error
 
 
-def lacks_public_key(info: BundleInfo) -> bool:
-    if info.public_key is None:
-        print("the app has no SUPublicEDKey yet; skipping the appcast")
-        return True
-    return False
-
-
-def check(arguments: argparse.Namespace) -> int:
-    return EXIT_SKIPPED if lacks_public_key(bundle_info(arguments.archive)) else 0
-
-
 def build(arguments: argparse.Namespace) -> int:
     info = bundle_info(arguments.archive)
-    if lacks_public_key(info):
-        return EXIT_SKIPPED
+    if info.public_key is None:
+        raise AppcastError("the app has no SUPublicEDKey, so it cannot verify updates")
 
     release = read_release(arguments.release)
     published_at = datetime.fromisoformat(release["published_at"].replace("Z", "+00:00"))
@@ -233,18 +218,11 @@ def build(arguments: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Builds and signs the Sparkle appcast.")
-    parser.add_argument("--check-only", action="store_true", help="only check that the app has an SUPublicEDKey")
-    parser.add_argument("--archive", required=True, type=Path)
-    feed_options = ("release", "notes", "key-file", "output")
-    for name in feed_options:
-        parser.add_argument(f"--{name}", type=Path)
+    for name in ("release", "notes", "archive", "key-file", "output"):
+        parser.add_argument(f"--{name}", required=True, type=Path)
     arguments = parser.parse_args()
-    if not arguments.check_only:
-        missing = [f"--{name}" for name in feed_options if getattr(arguments, name.replace("-", "_")) is None]
-        if missing:
-            parser.error(f"the following arguments are required: {', '.join(missing)}")
     try:
-        return check(arguments) if arguments.check_only else build(arguments)
+        return build(arguments)
     except (AppcastError, OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
