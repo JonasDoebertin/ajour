@@ -80,6 +80,19 @@ final class ActionEnableTests {
         #expect(test.copied == ["shop@example.com"])
     }
 
+    @Test func enablingATimedAliasDisabledElsewhereTurnsItBackOn() async throws {
+        let test = ActionEnableTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel()
+        test.enqueueDisabledAliasThatTurnsOn()
+
+        let enabled = try await model.enableAndCopy(aliasID: 7, email: "shop@example.com", for: .oneHour)
+
+        #expect(enabled.outcome == .enabled)
+        #expect(test.requestCount(path: "/api/aliases/7/toggle") == 1)
+        #expect(model.engine.record(for: 7)?.expiresAt == test.clock.now.addingTimeInterval(3600))
+        #expect(test.copied == ["shop@example.com"])
+    }
+
     @Test func enablingAPermanentlyEnabledAliasLeavesItUntimed() async throws {
         let model = try await signedInModel()
         transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
@@ -132,6 +145,44 @@ final class ActionEnableTests {
         test.transport.release()
         await expiry.value
 
+        #expect(model.engine.record(for: 7) == nil)
+        #expect(test.copied.isEmpty)
+    }
+
+    @Test func enableFailsAsBusyWhenAnExpiryDisableStartsDuringTheRead() async throws {
+        let test = ActionEnableTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.holdNext("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let enabling = Task { try await model.enableAndCopy(aliasID: 7, email: "shop@example.com", for: .oneHour) }
+        await test.transport.waitUntilARequestIsHeld()
+        test.clock.advance(by: 300)
+        let expiry = Task { await model.tick() }
+        while test.transport.heldRequestCount < 2 { await Task.yield() }
+
+        test.transport.release()
+
+        await #expect(throws: AliasActionError.busy(email: "shop@example.com")) { try await enabling.value }
+        await expiry.value
+        #expect(model.engine.record(for: 7) == nil)
+        #expect(test.copied.isEmpty)
+    }
+
+    @Test func enableFailsAsBusyWhenAnExpiryDisableEndsDuringTheRead() async throws {
+        let test = ActionEnableTests(records: [runningRecord(aliasID: 7)])
+        let model = try await test.signedInModel()
+        test.transport.holdNext("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7", json: Fixtures.aliasJSON(id: 7, enabled: true))
+        test.transport.enqueue("/api/aliases/7/toggle", method: "POST", json: Fixtures.toggleJSON(enabled: false))
+        let enabling = Task { try await model.enableAndCopy(aliasID: 7, email: "shop@example.com", for: .oneHour) }
+        await test.transport.waitUntilARequestIsHeld()
+        test.clock.advance(by: 300)
+        await model.tick()
+
+        test.transport.release()
+
+        await #expect(throws: AliasActionError.busy(email: "shop@example.com")) { try await enabling.value }
         #expect(model.engine.record(for: 7) == nil)
         #expect(test.copied.isEmpty)
     }

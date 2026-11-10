@@ -365,8 +365,8 @@ struct EnabledAlias: Equatable {
         }
     }
 
-    /// For actions outside the menu: enables a disabled alias for the duration, extends a timed one, and leaves
-    /// one that is enabled without a timer as it is, then copies its current address. Fails on a busy alias
+    /// For actions outside the menu: enables a disabled alias for the duration, extends an enabled timed one, and
+    /// leaves one that is enabled without a timer as it is, then copies its current address. Fails on a busy alias
     /// instead of ignoring it, and leaves `lastError` to the menu. Runs in a task of its own, so cancelling
     /// the caller never stops it halfway. `email` names the alias only in errors raised before it is read.
     func enableAndCopy(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
@@ -383,7 +383,9 @@ struct EnabledAlias: Equatable {
     }
 
     /// Timer data is checked first: without it, an alias enabled without a timer can't be told from a timed one.
-    /// An expiry disable counts as busy, because extending its timer would not stop it from turning the alias off.
+    /// An expiry disable counts as busy, also one that starts or ends during the read, because the alias would
+    /// end up disabled while the action reports it enabled. A timed alias that was disabled elsewhere loses its
+    /// outdated timer and is enabled like an untimed one, so no expiry disable can run while it is turned on.
     private func enableAndCopyNow(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
         guard !isBusy(aliasID: aliasID) else { throw AliasActionError.busy(email: email) }
         guard let api else { throw TimerEngineError.notSignedIn }
@@ -392,6 +394,7 @@ struct EnabledAlias: Equatable {
         defer { changes[aliasID] = nil }
         return try await whileEnabling {
             let session = self.session
+            let wasTimed = engine.record(for: aliasID) != nil
             let alias: Alias
             do {
                 alias = try await api.alias(id: aliasID)
@@ -401,13 +404,21 @@ struct EnabledAlias: Equatable {
             guard session == self.session else {
                 throw AliasActionError.timerNotStartedForPreviousAccount(email: alias.email)
             }
+            guard !engine.disablingAliasIDs.contains(aliasID), !wasTimed || engine.record(for: aliasID) != nil else {
+                throw AliasActionError.busy(email: email)
+            }
             let outcome: AliasEnableOutcome
-            if engine.record(for: aliasID) != nil {
+            switch (alias.enabled, wasTimed) {
+            case (true, true):
                 _ = try await engine.enable(aliasID: aliasID, for: duration)
                 outcome = .extended
-            } else if alias.enabled {
+            case (true, false):
                 outcome = .alreadyEnabled
-            } else {
+            case (false, true):
+                try engine.cancelTimer(aliasID: aliasID)
+                _ = try await engine.enable(aliasID: aliasID, for: duration)
+                outcome = .enabled
+            case (false, false):
                 _ = try await engine.enable(aliasID: aliasID, for: duration)
                 outcome = .enabled
             }
