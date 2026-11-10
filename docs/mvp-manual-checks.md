@@ -130,3 +130,4 @@ Run with `Ajour.dmg` from a release.
 2. The names below the icons are readable in Light and in Dark Mode.
 3. Dragging Ajour onto Applications installs it, and the installed app opens without a Gatekeeper warning.
 4. `spctl --assess --type open --context context:primary-signature -v Ajour.dmg` reports "Notarized Developer ID".
+5. After installing, `codesign --verify --deep --strict /Applications/Ajour.app` prints nothing and exits with 0.

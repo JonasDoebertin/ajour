@@ -12,6 +12,8 @@ REPOSITORY = Path(__file__).resolve().parent.parent
 BUILD_SCRIPT = REPOSITORY / "scripts" / "build-dmg.sh"
 VENV_PYTHON = REPOSITORY / "build" / "dmg-venv" / "bin" / "python"
 GENERIC_ICON = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
+STUB_EXECUTABLE = Path("/usr/bin/true")
+HAS_CUSTOM_ICON = 0x0400
 
 READ_LAYOUT = """
 import json, sys
@@ -34,10 +36,12 @@ with DSStore.open(sys.argv[1], "r") as store:
 
 
 def make_stub_app(directory: Path) -> Path:
+    """An ad-hoc signed app, so the tests can check that the image keeps its signature intact."""
     app = directory / "Ajour.app"
     resources = app / "Contents" / "Resources"
     resources.mkdir(parents=True)
     (app / "Contents" / "MacOS").mkdir()
+    shutil.copy(STUB_EXECUTABLE, app / "Contents" / "MacOS" / "Ajour")
     shutil.copy(GENERIC_ICON, resources / "AppIcon.icns")
     with open(app / "Contents" / "Info.plist", "wb") as info:
         plistlib.dump({
@@ -46,6 +50,7 @@ def make_stub_app(directory: Path) -> Path:
             "CFBundleIconFile": "AppIcon",
             "CFBundlePackageType": "APPL",
         }, info)
+    subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
     return app
 
 
@@ -53,7 +58,9 @@ def make_stub_app(directory: Path) -> Path:
 class DiskImageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Class cleanups run even when setUpClass fails halfway, unlike tearDownClass.
         cls.directory = Path(tempfile.mkdtemp())
+        cls.addClassCleanup(shutil.rmtree, cls.directory, ignore_errors=True)
         cls.image = cls.directory / "Ajour.dmg"
         cls.mount = cls.directory / "mount"
         app = make_stub_app(cls.directory)
@@ -62,11 +69,7 @@ class DiskImageTests(unittest.TestCase):
             ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(cls.mount), str(cls.image)],
             check=True, capture_output=True,
         )
-
-    @classmethod
-    def tearDownClass(cls):
-        subprocess.run(["hdiutil", "detach", str(cls.mount), "-force"], capture_output=True)
-        shutil.rmtree(cls.directory, ignore_errors=True)
+        cls.addClassCleanup(subprocess.run, ["hdiutil", "detach", str(cls.mount), "-force"], capture_output=True)
 
     def layout(self) -> dict:
         result = subprocess.run(
@@ -85,12 +88,11 @@ class DiskImageTests(unittest.TestCase):
         self.assertTrue((self.mount / "Ajour.app").is_dir())
         self.assertEqual(os.readlink(self.mount / "Applications"), "/Applications")
 
-    def test_leaves_the_app_bundle_untouched(self):
-        # Finder information on the bundle breaks `codesign --verify --strict` of the installed app.
-        attributes = subprocess.run(
-            ["xattr", str(self.mount / "Ajour.app")], check=True, capture_output=True, text=True,
+    def test_keeps_the_app_signature_valid(self):
+        result = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(self.mount / "Ajour.app")], capture_output=True, text=True,
         )
-        self.assertNotIn("com.apple.FinderInfo", attributes.stdout)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_has_background_and_volume_icon(self):
         background = self.mount / ".background.tiff"
@@ -98,6 +100,12 @@ class DiskImageTests(unittest.TestCase):
         info = subprocess.run(["tiffutil", "-info", str(background)], check=True, capture_output=True, text=True)
         self.assertEqual(info.stdout.count("Directory at"), 2, info.stdout)
         self.assertTrue((self.mount / ".VolumeIcon.icns").is_file())
+
+    def test_volume_uses_its_custom_icon(self):
+        result = subprocess.run(["xattr", "-px", "com.apple.FinderInfo", str(self.mount)], capture_output=True, text=True)
+        finder_info = bytes.fromhex(result.stdout) if result.returncode == 0 else bytes(32)
+        flags = int.from_bytes(finder_info[8:10], "big")
+        self.assertTrue(flags & HAS_CUSTOM_ICON, f"Finder flags {flags:#06x}")
 
     def test_window_layout(self):
         layout = self.layout()
