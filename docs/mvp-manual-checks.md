@@ -121,6 +121,7 @@ Run with Ajour 0.4.0 installed and 0.4.1 published.
 6. Onboarding shows "Install updates automatically", checked; Settings shows the same setting. After turning it off in Settings and signing out, setting up again shows it unchecked.
 7. With an update waiting, turning off "Install updates automatically" and closing Settings keeps Ajour running with "Restart to Update" in the menu.
 8. `log stream` shows no request to anything but `app.simplelogin.io`, `ajour.email` and GitHub.
+9. Without a pending update, the menu ends with Settings… and Quit, with no update item. Settings offers "Check for Updates…" in its Updates group, and its About group shows the installed version and build, for example "Version 0.4.3 (17)".
 
 ## Disk image
 

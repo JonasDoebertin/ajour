@@ -173,6 +173,11 @@ struct SettingsView: View {
                     .font(.headline)
                 Text(AboutText.tagline)
                     .foregroundStyle(.secondary)
+                if let version = AboutText.version(info: Bundle.main.infoDictionary ?? [:]) {
+                    Text(version)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
         }
         .padding(.vertical, 6)

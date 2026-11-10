@@ -82,7 +82,7 @@ import Observation
             windows.show(.onboarding)
         case .openSettings:
             windows.show(.settings)
-        case .checkForUpdates, .showUpdate:
+        case .showUpdate:
             updates?.checkForUpdates()
         case .restartToUpdate:
             updates?.restartToUpdate()
