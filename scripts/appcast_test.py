@@ -110,30 +110,18 @@ class AppcastTests(unittest.TestCase):
         self.assertEqual(info.minimum_system_version, "26.0")
         self.assertEqual(info.public_key, "cHVibGlj")
 
-    def test_archiveWithoutPublicKeyIsSkipped(self):
+    def test_archiveWithoutPublicKeyFails(self):
         self.write_archive()
         self.key_file.write_text("irrelevant")
         result = self.run_feed_cli()
-        self.assertEqual(result.returncode, 3, result.stderr)
-        self.assertIn("SUPublicEDKey", result.stdout)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("SUPublicEDKey", result.stderr)
         self.assertFalse(self.output.exists())
 
-    def test_checkOnlySkipsAnArchiveWithoutPublicKey(self):
-        self.write_archive()
-        result = self.run_cli("--check-only", "--archive", str(self.archive))
-        self.assertEqual(result.returncode, 3, result.stderr)
-        self.assertIn("SUPublicEDKey", result.stdout)
-        self.assertFalse(self.output.exists())
-
-    def test_checkOnlyAcceptsAnArchiveWithPublicKey(self):
-        self.write_archive(public_key="cHVibGlj")
-        result = self.run_cli("--check-only", "--archive", str(self.archive))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse(self.output.exists())
-
-    def test_checkOnlyFailsForAnUnreadableArchive(self):
+    def test_unreadableArchiveFails(self):
         self.archive.write_bytes(b"not a zip")
-        result = self.run_cli("--check-only", "--archive", str(self.archive))
+        self.key_file.write_text("irrelevant")
+        result = self.run_feed_cli()
         self.assertEqual(result.returncode, 1)
         self.assertIn("cannot read", result.stderr)
 
