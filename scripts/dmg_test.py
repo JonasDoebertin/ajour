@@ -101,8 +101,8 @@ class DiskImageTests(unittest.TestCase):
 
     def test_window_layout(self):
         layout = self.layout()
-        self.assertEqual(layout["app"], [160, 190])
-        self.assertEqual(layout["applications"], [480, 190])
+        self.assertEqual(layout["app"], [160, 260])
+        self.assertEqual(layout["applications"], [480, 260])
         self.assertEqual(layout["icon_view"]["iconSize"], 128)
         self.assertEqual(layout["icon_view"]["textSize"], 13)
         self.assertRegex(layout["window"]["WindowBounds"], r"\{\{-?\d+, -?\d+\}, \{640, 432\}\}")

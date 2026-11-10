@@ -126,7 +126,7 @@ Run with Ajour 0.4.0 installed and 0.4.1 published.
 
 Run with `Ajour.dmg` from a release.
 
-1. Opening the disk image shows a window with the petrol background, Ajour on the left, Applications on the right and the dotted arrow between them. The background fills the window without scroll bars.
+1. Opening the disk image shows a window with the light background, the Ajour header and the headline "Drag it in.", Ajour on the left, Applications on the right and the arrow between them. The background fills the window without scroll bars.
 2. The names below the icons are readable in Light and in Dark Mode.
 3. Dragging Ajour onto Applications installs it, and the installed app opens without a Gatekeeper warning.
 4. `spctl --assess --type open --context context:primary-signature -v Ajour.dmg` reports "Notarized Developer ID".
