@@ -59,7 +59,7 @@ struct MenuEntryTests {
 
     @Test func noUpdateItemWhenUpdatesAreUnsupported() {
         let entries = MenuEntry.entries(for: state(updates: nil))
-        let updateActions: [MenuAction] = [.checkForUpdates, .showUpdate, .restartToUpdate]
+        let updateActions: [MenuAction] = [.showUpdate, .restartToUpdate]
 
         #expect(!entries.contains { entry in
             guard case .action(_, let action, _, _, _, _) = entry else { return false }
@@ -68,9 +68,8 @@ struct MenuEntryTests {
         #expect(entries.last == quit)
     }
 
-    @Test func idleShowsCheckForUpdatesRightBeforeQuit() {
-        #expect(itemBeforeQuit(updates: .idle) == .action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath"))
-        #expect(MenuEntry.entries(for: state(updates: .idle)).last == quit)
+    @Test func idleLeavesTheUpdateCheckToSettings() {
+        #expect(MenuEntry.entries(for: state(updates: .idle)) == MenuEntry.entries(for: state(updates: nil)))
     }
 
     @Test func availableUpdateShowsUpdateAvailable() {
@@ -78,14 +77,11 @@ struct MenuEntryTests {
     }
 
     @Test func downloadedUpdateShowsRestartToUpdate() {
-        let entries = MenuEntry.entries(for: state(updates: .readyToInstall(version: "0.5.0")))
-
         #expect(itemBeforeQuit(updates: .readyToInstall(version: "0.5.0")) == .action("Restart to Update", .restartToUpdate, symbol: "arrow.clockwise"))
-        #expect(!entries.contains(.action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath")))
     }
 
-    @Test func signedOutMenuOffersUpdatesToo() {
-        #expect(itemBeforeQuit(phase: .signedOut, updates: .idle) == .action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath"))
+    @Test func signedOutMenuShowsPendingUpdatesToo() {
+        #expect(itemBeforeQuit(phase: .signedOut, updates: .available(version: "0.5.0")) == .action("Update Available…", .showUpdate, symbol: "arrow.down.circle"))
     }
 
     @Test func signedOutExplainsSetup() {

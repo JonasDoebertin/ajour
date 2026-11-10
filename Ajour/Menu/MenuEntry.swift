@@ -5,7 +5,6 @@ enum MenuAction: Equatable {
     case setUp
     case reEnterAPIKey
     case openSettings
-    case checkForUpdates
     case showUpdate
     case restartToUpdate
     case quit
@@ -110,13 +109,12 @@ indirect enum MenuEntry: Equatable {
         return entries
     }
 
-    /// One item that swaps by state. Nothing checks while an update waits to be installed, so only the restart shows then.
+    /// Only a pending update shows here; Settings offers the manual check. The restart stays in the menu because the
+    /// automatic install waits while a fresh timer runs.
     private static func updateItem(_ updates: UpdateMenuState?) -> [MenuEntry] {
         switch updates {
-        case nil:
+        case nil, .idle:
             []
-        case .idle:
-            [.action("Check for Updates…", .checkForUpdates, symbol: "arrow.triangle.2.circlepath")]
         case .available:
             [.action("Update Available…", .showUpdate, symbol: "arrow.down.circle")]
         case .readyToInstall:
