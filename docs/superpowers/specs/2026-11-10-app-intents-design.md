@@ -88,8 +88,8 @@ The actions do what the menu does, through the same timers and the same messages
 
 ### Errors
 
-- All messages come from `AppModel.userMessage(for:)`, so an action and the menu say the same thing: signed out ("Not signed in. Set up your API key first."), a rejected key, network and API errors, unreadable timer data, and account changes during an action. Busy, not ready and "<email> no longer exists." (an alias deleted on the server after it was picked) are new cases there.
-- `AppModel` gets throwing versions of its enable, create random and disable work, extracted from `perform(on:)` and `createRandomAlias`. They never touch `lastError`. The menu's methods call them and keep setting and clearing `lastError` exactly as today.
+- All messages come from `AppModel.userMessage(for:)`, so an action and the menu say the same thing: signed out ("Not signed in. Set up your API key first."), a rejected key, network and API errors, unreadable timer data, and account changes during an action. Busy, not ready, quitting ("Ajour is quitting.", for an enable or creation that arrives once quitting has started) and "<email> no longer exists." (an alias deleted on the server after it was picked) are new cases there.
+- `AppModel` gets throwing versions of its enable, create random and disable work, extracted from `perform(on:)` and `createRandomAlias`. They never touch `lastError`. The menu's methods keep their own wrappers and set and clear `lastError` exactly as today; the toggle, timer and creation logic both use stays single in `TimerEngine`, `AliasSwitch` and `createAlias`.
 
 ### Side effects that stay
 
