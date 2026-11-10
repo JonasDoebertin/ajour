@@ -1,5 +1,4 @@
 import AppIntents
-import Foundation
 import SimpleLoginKit
 
 struct EnableAliasIntent: AppIntent {
@@ -81,22 +80,5 @@ struct DisableAliasIntent: AppIntent {
             try await appModel.disable(aliasID: alias.id, email: alias.email)
         }
         return .result(dialog: "\(ActionDialog.disabled(email: alias.email))")
-    }
-}
-
-/// Carries the menu's words for a failure, so Spotlight and Shortcuts show what the menu would.
-struct ActionFailure: LocalizedError {
-    let errorDescription: String?
-}
-
-/// Rethrows failures in the menu's words. Cancellation passes through so the system can tell it apart.
-@MainActor
-func explainingFailures<Result>(_ body: @MainActor () async throws -> Result) async throws -> Result {
-    do {
-        return try await body()
-    } catch let cancellation as CancellationError {
-        throw cancellation
-    } catch {
-        throw ActionFailure(errorDescription: AppModel.userMessage(for: error))
     }
 }
