@@ -367,21 +367,10 @@ public enum DisableAllOutcome: Equatable, Sendable {
             return .unauthorized(generation: keyGeneration)
         } catch APIError.server(status: 403, let message) {
             return .forbidden(generation: keyGeneration, error: .server(status: 403, message: message))
-        } catch where isAliasGone(error) {
+        } catch where APIError.meansAliasIsGone(error) {
             return .disabled
         } catch {
             return .failed(error)
-        }
-    }
-
-    /// SimpleLogin answers 404 or 400 "Unknown error" for aliases that don't exist. A 403 is different: the alias
-    /// belongs to another account, for example after the key was replaced, and may still be enabled there.
-    nonisolated private static func isAliasGone(_ error: any Error) -> Bool {
-        switch error as? APIError {
-        case .server(status: 404, _), .server(status: 400, message: "Unknown error"):
-            true
-        default:
-            false
         }
     }
 

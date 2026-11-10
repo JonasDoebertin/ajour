@@ -10,6 +10,8 @@ GitHub Actions runs on the `xcode-27` runner image with Xcode 27.1, the version 
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
+A repository ruleset, "Protect release tags", covers tags matching `v*`: it blocks creating, moving and deleting them for everyone except repository admins, who bypass it. So only an admin can push a release tag.
+
 Releases are signed with the owner's Developer ID and notarized by Apple; the release workflow fails rather than attach a build that Gatekeeper would reject. The build action also re-signs Sparkle's helper tools with the Developer ID, so the notarized app can update itself. The disk image opens to a window with the app, a link to Applications and the background from `packaging/dmg/`. `scripts/build-dmg.sh` builds it with dmgbuild, pinned by hash in `packaging/dmg/requirements.txt`, without Finder; the release workflow then signs, notarizes and staples it like the app. The release workflow also attests the build provenance of the final `Ajour.zip` and `Ajour.dmg`, for tag runs only. Builds for pull requests stay ad-hoc signed, so macOS asks before opening one the first time: open it once, then allow it in System Settings > Privacy & Security.
 
 ## Website

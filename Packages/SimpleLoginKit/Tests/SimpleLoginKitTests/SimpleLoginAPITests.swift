@@ -144,4 +144,12 @@ import Testing
         #expect(!APIError.server(status: 404, message: nil).isTransient)
         #expect(!APIError.decoding("bad").isTransient)
     }
+
+    @Test func meansAliasIsGoneForMissingAliases() {
+        #expect(APIError.meansAliasIsGone(APIError.server(status: 404, message: nil)))
+        #expect(APIError.meansAliasIsGone(APIError.server(status: 400, message: "Unknown error")))
+        #expect(!APIError.meansAliasIsGone(APIError.server(status: 403, message: nil)))
+        #expect(!APIError.meansAliasIsGone(APIError.server(status: 400, message: "Alias quota exceeded")))
+        #expect(!APIError.meansAliasIsGone(APIError.transport("offline")))
+    }
 }

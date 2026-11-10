@@ -105,6 +105,10 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
         }
     }
 
+    var heldRequestCount: Int {
+        lock.withLock { heldRequests.count }
+    }
+
     func release() {
         let held = lock.withLock {
             defer { heldRequests = [] }

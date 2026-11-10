@@ -65,6 +65,19 @@ enum AliasActionError: Error, Equatable {
     case alreadyDisabled(email: String)
     case timerAlreadyEnded(email: String)
     case timerNotStartedForPreviousAccount(email: String)
+    case busy(email: String)
+    case gone(email: String)
+    case notReady
+    case quitting
+}
+
+enum AliasEnableOutcome: Equatable {
+    case enabled, extended, alreadyEnabled
+}
+
+struct EnabledAlias: Equatable {
+    let email: String
+    let outcome: AliasEnableOutcome
 }
 
 @MainActor @Observable final class AppModel {
@@ -353,11 +366,76 @@ enum AliasActionError: Error, Equatable {
         }
     }
 
+    /// For actions outside the menu: enables a disabled alias for the duration, extends an enabled timed one, and
+    /// leaves one that is enabled without a timer as it is, then copies its current address. Fails on a busy alias
+    /// instead of ignoring it, and leaves `lastError` to the menu. Runs in a task of its own, so cancelling
+    /// the caller never stops it halfway. `email` names the alias only in errors raised before it is read.
+    /// Refused once quitting starts, because quit no longer waits for new enables and the alias could stay on.
+    func enableAndCopy(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
+        try await Task { try await enableAndCopyNow(aliasID: aliasID, email: email, for: duration) }.value
+    }
+
+    /// Returns once launch has decided whether there is an account, so an action that launched the app can start.
+    func waitUntilLoaded(within limit: Duration = .seconds(10)) async throws {
+        let deadline = ContinuousClock.now + limit
+        while phase == .loading {
+            guard ContinuousClock.now < deadline else { throw AliasActionError.notReady }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    /// Timer data is checked first: without it, an alias enabled without a timer can't be told from a timed one.
+    /// An expiry disable counts as busy, also one that starts or ends during the read, because the alias would
+    /// end up disabled while the action reports it enabled. A timed alias that was disabled elsewhere loses its
+    /// outdated timer and is enabled like an untimed one, so no expiry disable can run while it is turned on.
+    private func enableAndCopyNow(aliasID: Int, email: String, for duration: AliasDuration) async throws -> EnabledAlias {
+        guard !isShuttingDown else { throw AliasActionError.quitting }
+        guard !isBusy(aliasID: aliasID) else { throw AliasActionError.busy(email: email) }
+        guard let api else { throw TimerEngineError.notSignedIn }
+        guard engine.loadError == nil else { throw TimerEngineError.storeUnavailable }
+        changes[aliasID] = .enabling
+        defer { changes[aliasID] = nil }
+        return try await whileEnabling {
+            let session = self.session
+            let wasTimed = engine.record(for: aliasID) != nil
+            let alias: Alias
+            do {
+                alias = try await api.alias(id: aliasID)
+            } catch where APIError.meansAliasIsGone(error) {
+                throw AliasActionError.gone(email: email)
+            }
+            guard session == self.session else {
+                throw AliasActionError.timerNotStartedForPreviousAccount(email: alias.email)
+            }
+            guard !engine.disablingAliasIDs.contains(aliasID), !wasTimed || engine.record(for: aliasID) != nil else {
+                throw AliasActionError.busy(email: email)
+            }
+            let outcome: AliasEnableOutcome
+            switch (alias.enabled, wasTimed) {
+            case (true, true):
+                _ = try await engine.enable(aliasID: aliasID, for: duration)
+                outcome = .extended
+            case (true, false):
+                outcome = .alreadyEnabled
+            case (false, true):
+                try engine.cancelTimer(aliasID: aliasID)
+                _ = try await engine.enable(aliasID: aliasID, for: duration)
+                outcome = .enabled
+            case (false, false):
+                _ = try await engine.enable(aliasID: aliasID, for: duration)
+                outcome = .enabled
+            }
+            recordEnabled(true, aliasID: aliasID)
+            copyToClipboard(alias.email)
+            return EnabledAlias(email: alias.email, outcome: outcome)
+        }
+    }
+
     /// A random alias uses the account's default domain and mailbox.
     func createRandomAlias(expiringAfter duration: AliasDuration?) async {
         let session = self.session
         do {
-            _ = try await createAlias(expiringAfter: duration) { try await $0.createRandomAlias() }
+            _ = try await createAlias(expiringAfter: duration, announcesCopy: true) { try await $0.createRandomAlias() }
             lastError = nil
         } catch {
             guard session == self.session || error is AliasCreationError else { return }
@@ -366,9 +444,31 @@ enum AliasActionError: Error, Equatable {
     }
 
     func createCustomAlias(prefix: String, suffix: AliasSuffix, mailboxID: Int, expiringAfter duration: AliasDuration?) async throws -> Alias {
-        try await createAlias(expiringAfter: duration) {
+        try await createAlias(expiringAfter: duration, announcesCopy: true) {
             try await $0.createCustomAlias(prefix: prefix, signedSuffix: suffix.signedSuffix, mailboxIDs: [mailboxID])
         }
+    }
+
+    /// For actions outside the menu: creates a random alias like the menu does, but doesn't announce the copy,
+    /// because the action confirms it itself. Leaves `lastError` to the menu. Runs in a task of its own, so
+    /// cancelling the caller never leaves a new alias untimed. Refused once quitting starts, like enabling.
+    func createRandomAliasAndCopy(expiringAfter duration: AliasDuration?) async throws -> Alias {
+        try await Task {
+            guard !isShuttingDown else { throw AliasActionError.quitting }
+            return try await createAlias(expiringAfter: duration, announcesCopy: false) { try await $0.createRandomAlias() }
+        }.value
+    }
+
+    /// For actions outside the menu: disables the alias now and ends its timer. Fails on an alias another action
+    /// changes instead of ignoring it, but joins a running expiry disable, which ends the same way. Leaves
+    /// `lastError` to the menu. Runs in a task of its own, so cancelling the caller never stops it halfway.
+    func disable(aliasID: Int, email: String) async throws {
+        try await Task {
+            guard changes[aliasID] == nil else { throw AliasActionError.busy(email: email) }
+            changes[aliasID] = .disabling
+            defer { changes[aliasID] = nil }
+            try await engine.disableNow(aliasID: aliasID)
+        }.value
     }
 
     /// Pinned aliases are listed in the menu. The menu's list changes right away and is then reloaded.
@@ -620,6 +720,7 @@ enum AliasActionError: Error, Equatable {
     /// An alias created for an account that was signed out or replaced meanwhile isn't timed or copied.
     private func createAlias(
         expiringAfter duration: AliasDuration?,
+        announcesCopy: Bool,
         _ create: (SimpleLoginAPI) async throws -> Alias
     ) async throws -> Alias {
         guard let api else { throw TimerEngineError.notSignedIn }
@@ -633,7 +734,7 @@ enum AliasActionError: Error, Equatable {
                 try await startTimer(forNewAlias: alias, duration: duration)
             }
             copyToClipboard(alias.email)
-            onNewAliasCopied(alias.email)
+            if announcesCopy { onNewAliasCopied(alias.email) }
             return alias
         }
     }
@@ -712,6 +813,14 @@ enum AliasActionError: Error, Equatable {
             "\(email) was already disabled."
         case AliasActionError.timerNotStartedForPreviousAccount(let email):
             "\(email) belongs to the previous account, so no timer was started."
+        case AliasActionError.busy(let email):
+            "\(email) is busy. Try again in a moment."
+        case AliasActionError.gone(let email):
+            "\(email) no longer exists."
+        case AliasActionError.notReady:
+            "Ajour isn't ready yet. Try again in a moment."
+        case AliasActionError.quitting:
+            "Ajour is quitting."
         case TimerEngineError.accountChanged(let email, disabledAgain: true):
             "\(email) was enabled for the previous account and has been disabled."
         case TimerEngineError.accountChanged(let email, disabledAgain: false):
