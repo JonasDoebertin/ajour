@@ -27,6 +27,6 @@ text_size = 13
 label_pos = "bottom"
 arrange_by = None
 icon_locations = {
-    application_name: (160, 190),
-    "Applications": (480, 190),
+    application_name: (160, 260),
+    "Applications": (480, 260),
 }
